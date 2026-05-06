@@ -1,7 +1,7 @@
 """
 unibet_backend.py — FastAPI backend for the Unibet Tennis Odds feed
 ====================================================================
-Port: 5003
+Port: 5333
 
 Endpoints:
   GET /stream        Server-Sent Events — all price updates in real-time
@@ -39,7 +39,7 @@ sys.path.insert(0, __import__("os").path.dirname(__import__("os").path.abspath(_
 import unibet_feed
 
 # ── CONFIG ──────────────────────────────────────────────────────────────────────
-PORT    = 5003
+PORT    = 5333
 DB_PATH = "unibet_tennis_prices.db"
 
 # ── IN-MEMORY STATE ─────────────────────────────────────────────────────────────

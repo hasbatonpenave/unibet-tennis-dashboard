@@ -208,7 +208,7 @@
 </table>
 
 <script>
-const API = 'http://localhost:5003';
+const API = 'http://localhost:5333';
 let state = {};          // match_id → {meta, odds, movements, score}
 let movements = {};      // match_id → {market: {sel: direction}}
 let sortCol = 'start';
@@ -451,7 +451,7 @@ fetch(`${API}/prices`)
   })
   .catch(() => {
     document.getElementById('table-body').innerHTML =
-      '<tr><td colspan="5" class="no-data">Cannot connect to backend. Is it running on port 5003?</td></tr>';
+      '<tr><td colspan="5" class="no-data">Cannot connect to backend. Is it running on port 5333?</td></tr>';
   });
 </script>
 </body>
