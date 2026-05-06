@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Unibet Tennis — Odds History Chart</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --border: #30363d;
+    --text: #c9d1d9;
+    --muted: #8b949e;
+    --accent: #58a6ff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;
+    font-size: 13px;
+  }
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  header h1 { font-size: 16px; }
+  header a { color: var(--accent); text-decoration: none; font-size: 12px; }
+  .controls {
+    padding: 12px 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  select, input {
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 6px 10px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-family: inherit;
+  }
+  select { min-width: 200px; }
+  .chart-container {
+    width: 100%;
+    height: calc(100vh - 160px);
+    padding: 16px;
+  }
+  canvas { width: 100% !important; height: 100% !important; }
+  .info {
+    padding: 0 16px;
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .loading {
+    padding: 40px;
+    text-align: center;
+    color: var(--muted);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Odds Timeline — Unibet Tennis</h1>
+  <div>
+    <a href="dashboard.html">Dashboard</a> &nbsp;
+    <a href="stream.html">Stream Log</a>
+  </div>
+</header>
+
+<div class="controls">
+  <label for="match-select">Match:</label>
+  <select id="match-select" onchange="loadHistory()">
+    <option value="">-- Select a match --</option>
+  </select>
+  <label for="selection-select">Selection:</label>
+  <select id="selection-select" onchange="loadHistory()">
+    <option value="">-- Select player --</option>
+  </select>
+  <label for="limit-select">Points:</label>
+  <select id="limit-select" onchange="loadHistory()">
+    <option value="100">100</option>
+    <option value="300" selected>300</option>
+    <option value="500">500</option>
+    <option value="1000">1000</option>
+  </select>
+  <span style="margin-left:auto;font-size:11px;color:var(--muted)" id="update-indicator"></span>
+</div>
+
+<div class="chart-container">
+  <canvas id="chart"></canvas>
+</div>
+
+<script>
+const API = 'http://localhost:5003';
+let chart = null;
+let currentData = [];
+
+// ── Populate match selector ─────────────────────────────────────────────────
+async function populateMatches() {
+  try {
+    const resp = await fetch(`${API}/markets`);
+    const data = await resp.json();
+    const sel = document.getElementById('match-select');
+    sel.innerHTML = '<option value="">-- Select a match --</option>';
+    for (const [mid, meta] of Object.entries(data)) {
+      const odds = meta.odds?.['1X2'] || {};
+      const names = Object.keys(odds);
+      const label = meta.match || (names.length >= 2 ? `${names[0]} vs ${names[1]}` : mid);
+      const liveTag = meta.live ? ' [LIVE]' : '';
+      const option = document.createElement('option');
+      option.value = mid;
+      option.textContent = `${label}${liveTag} (${names.join(' / ')})`;
+      option.dataset.selections = JSON.stringify(names);
+      sel.appendChild(option);
+    }
+  } catch (e) {
+    console.error('Failed to load matches:', e);
+  }
+}
+
+document.getElementById('match-select').addEventListener('change', function() {
+  const opt = this.selectedOptions[0];
+  const selSelect = document.getElementById('selection-select');
+  selSelect.innerHTML = '<option value="">-- Select player --</option>';
+  if (opt && opt.dataset.selections) {
+    const names = JSON.parse(opt.dataset.selections);
+    names.forEach(name => {
+      const o = document.createElement('option');
+      o.value = name;
+      o.textContent = name;
+      selSelect.appendChild(o);
+    });
+  }
+});
+
+// ── Load history ────────────────────────────────────────────────────────────
+async function loadHistory() {
+  const matchId = document.getElementById('match-select').value;
+  const selection = document.getElementById('selection-select').value;
+  const limit = document.getElementById('limit-select').value;
+  if (!matchId || !selection) return;
+
+  try {
+    const resp = await fetch(
+      `${API}/history?match_id=${encodeURIComponent(matchId)}&selection=${encodeURIComponent(selection)}&limit=${limit}`
+    );
+    const rows = await resp.json();
+    currentData = rows;
+
+    const labels = rows.map(r => new Date(r.ts * 1000).toLocaleTimeString());
+    const values = rows.map(r => r.odd);
+
+    const ctx = document.getElementById('chart').getContext('2d');
+
+    if (chart) chart.destroy();
+
+    const min = Math.floor(Math.min(...values) * 100 - 5) / 100;
+    const max = Math.ceil(Math.max(...values) * 100 + 5) / 100;
+
+    chart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: `${selection} odds`,
+          data: values,
+          borderColor: '#58a6ff',
+          backgroundColor: 'rgba(88, 166, 255, 0.05)',
+          borderWidth: 2,
+          pointRadius: values.length > 200 ? 0 : 2,
+          pointHoverRadius: 5,
+          tension: 0.1,
+          fill: true,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { labels: { color: '#c9d1d9' } },
+          tooltip: {
+            callbacks: {
+              label: ctx => `Odds: ${ctx.parsed.y.toFixed(3)}`,
+            },
+          },
+        },
+        scales: {
+          x: {
+            ticks: {
+              color: '#8b949e',
+              maxTicksLimit: 15,
+              maxRotation: 45,
+            },
+            grid: { color: '#21262d' },
+          },
+          y: {
+            min: min,
+            max: max,
+            ticks: {
+              color: '#8b949e',
+              callback: v => v.toFixed(2),
+            },
+            grid: { color: '#21262d' },
+          },
+        },
+        interaction: {
+          intersect: false,
+          mode: 'index',
+        },
+      },
+    });
+
+    document.getElementById('update-indicator').textContent =
+      `${rows.length} data points | Range: ${min.toFixed(2)} - ${max.toFixed(2)}`;
+  } catch (e) {
+    console.error('Failed to load history:', e);
+  }
+}
+
+// ── SSE for live updates ────────────────────────────────────────────────────
+const evtSource = new EventSource(`${API}/stream`);
+evtSource.onmessage = (event) => {
+  try {
+    const data = JSON.parse(event.data);
+    if (data.type === 'price') {
+      const matchId = document.getElementById('match-select').value;
+      if (data.match_id === matchId) {
+        // Auto-refresh if watching this match
+        loadHistory();
+      }
+    }
+  } catch (e) {}
+};
+
+// ── Init ────────────────────────────────────────────────────────────────────
+populateMatches();
+setInterval(populateMatches, 30000); // refresh match list every 30s
+</script>
+</body>
+</html>

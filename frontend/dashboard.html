@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Unibet Tennis — Live Odds Dashboard</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --border: #30363d;
+    --text: #c9d1d9;
+    --muted: #8b949e;
+    --up: #238636;
+    --down: #da3633;
+    --live: #ff4444;
+    --accent: #58a6ff;
+    --row-hover: #1c2129;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;
+    font-size: 13px;
+    line-height: 1.4;
+  }
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  header h1 { font-size: 16px; font-weight: 600; }
+  header .stats {
+    display: flex;
+    gap: 16px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  header .stats span { white-space: nowrap; }
+  .live-dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--live);
+    margin-right: 4px;
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+  .filters {
+    padding: 8px 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .filters input, .filters select {
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-family: inherit;
+  }
+  .filters input { width: 180px; }
+  .filters label { font-size: 11px; color: var(--muted); }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+  }
+  thead {
+    position: sticky;
+    top: 74px;
+    z-index: 5;
+  }
+  th {
+    background: var(--surface);
+    color: var(--muted);
+    font-weight: 500;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 8px 10px;
+    text-align: left;
+    border-bottom: 2px solid var(--border);
+    cursor: pointer;
+    user-select: none;
+  }
+  th:hover { color: var(--text); }
+  th.sorted { color: var(--accent); }
+  td {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  tr:hover { background: var(--row-hover); }
+  tr.live { border-left: 3px solid var(--live); }
+  tr.prematch { border-left: 3px solid transparent; }
+  .odd-cell {
+    text-align: center;
+    font-weight: 600;
+    font-size: 13px;
+    transition: background 0.3s;
+    border-radius: 3px;
+    padding: 4px 8px;
+    min-width: 60px;
+    display: inline-block;
+  }
+  .odd-up { background: rgba(35, 134, 54, 0.25); color: #3fb950; }
+  .odd-down { background: rgba(218, 54, 51, 0.25); color: #f85149; }
+  .odd-steady { color: var(--text); }
+  .odd-new { color: var(--accent); }
+  .score {
+    font-size: 14px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .score-detail {
+    font-size: 10px;
+    color: var(--muted);
+  }
+  .match-name {
+    font-weight: 500;
+  }
+  .competition {
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .live-badge {
+    background: var(--live);
+    color: #fff;
+    font-size: 9px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+  .loading {
+    padding: 40px;
+    text-align: center;
+    color: var(--muted);
+  }
+  .no-data {
+    padding: 40px;
+    text-align: center;
+    color: var(--muted);
+    font-style: italic;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Unibet Tennis — Live Odds</h1>
+  <div class="stats" id="stats">
+    <span>Matches: <strong id="match-count">0</strong></span>
+    <span>Live: <strong id="live-count">0</strong></span>
+    <span>Updates: <strong id="update-count">0</strong></span>
+    <span>Last: <strong id="last-update">--</strong></span>
+  </div>
+</header>
+
+<div class="filters">
+  <label>Search:</label>
+  <input type="text" id="search" placeholder="Player or tournament..." oninput="render()">
+  <label>Show:</label>
+  <select id="filter-live" onchange="render()">
+    <option value="all">All Matches</option>
+    <option value="live">Live Only</option>
+    <option value="prematch">Prematch Only</option>
+  </select>
+  <label>Sort:</label>
+  <select id="sort-by" onchange="render()">
+    <option value="start">Start Time</option>
+    <option value="player">Player Name</option>
+    <option value="competition">Tournament</option>
+  </select>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width:22%" data-sort="player">Match</th>
+      <th style="width:14%" data-sort="competition">Tournament</th>
+      <th style="width:12%" data-sort="score">Score</th>
+      <th style="width:35%" colspan="2">1X2 Odds (Moneyline)</th>
+    </tr>
+  </thead>
+  <tbody id="table-body">
+    <tr><td colspan="5" class="loading">Connecting to feed...</td></tr>
+  </tbody>
+</table>
+
+<script>
+const API = 'http://localhost:5003';
+let state = {};          // match_id → {meta, odds, movements, score}
+let movements = {};      // match_id → {market: {sel: direction}}
+let sortCol = 'start';
+let sortDir = 1;
+
+// ── SSE Connection ──────────────────────────────────────────────────────────
+const evtSource = new EventSource(`${API}/stream`);
+
+evtSource.addEventListener('open', () => {
+  console.log('SSE connected');
+});
+
+evtSource.onmessage = (event) => {
+  try {
+    const data = JSON.parse(event.data);
+    if (data.type === 'snapshot') {
+      applySnapshot(data);
+    } else if (data.type === 'price') {
+      applyUpdate(data);
+    }
+  } catch (e) {}
+};
+
+function applySnapshot(data) {
+  const prices = data.prices || {};
+  const meta = data.meta || {};
+  for (const [mid, markets] of Object.entries(prices)) {
+    const odds1x2 = markets['1X2'] || {};
+    if (Object.keys(odds1x2).length >= 2) {
+      state[mid] = {
+        meta: meta[mid] || {},
+        odds: odds1x2,
+        movements: {},
+      };
+    }
+  }
+  render();
+}
+
+function applyUpdate(data) {
+  const mid = data.match_id;
+  const odds = data.odds || {};
+  const mov = data.movements || {};
+  const meta = data.meta || {};
+  const score = data.score;
+
+  if (Object.keys(odds).length < 2) return;
+
+  state[mid] = {
+    meta: { ...(state[mid]?.meta || {}), ...meta, live: data.live },
+    odds: odds,
+    movements: mov,
+    score: score,
+  };
+
+  movements[mid] = { ...(movements[mid] || {}), '1X2': mov };
+
+  document.getElementById('update-count').textContent =
+    parseInt(document.getElementById('update-count').textContent) + 1;
+  document.getElementById('last-update').textContent =
+    new Date(data.ts * 1000).toLocaleTimeString();
+
+  updateRow(mid);
+  updateStats();
+}
+
+// ── Render ──────────────────────────────────────────────────────────────────
+let renderTimer = null;
+function render() {
+  clearTimeout(renderTimer);
+  renderTimer = setTimeout(() => {
+    updateStats();
+    fullRender();
+  }, 50);
+}
+
+function fullRender() {
+  const tbody = document.getElementById('table-body');
+  const search = document.getElementById('search').value.toLowerCase();
+  const filter = document.getElementById('filter-live').value;
+  const sortKey = document.getElementById('sort-by').value;
+  sortCol = sortKey;
+
+  let matches = Object.entries(state);
+
+  // Filter
+  if (search) {
+    matches = matches.filter(([mid, d]) => {
+      const m = d.meta;
+      return (m.match || '').toLowerCase().includes(search) ||
+             (m.player_a || '').toLowerCase().includes(search) ||
+             (m.player_b || '').toLowerCase().includes(search) ||
+             (m.competition || '').toLowerCase().includes(search);
+    });
+  }
+  if (filter === 'live') {
+    matches = matches.filter(([mid, d]) => d.meta.live);
+  } else if (filter === 'prematch') {
+    matches = matches.filter(([mid, d]) => !d.meta.live);
+  }
+
+  // Sort
+  matches.sort((a, b) => {
+    let va, vb;
+    const ma = a[1].meta, mb = b[1].meta;
+    if (sortKey === 'start') {
+      va = ma.date || '999999';
+      vb = mb.date || '999999';
+      // Live matches first
+      if (ma.live && !mb.live) return -1;
+      if (!ma.live && mb.live) return 1;
+    } else if (sortKey === 'player') {
+      va = (ma.match || '').toLowerCase();
+      vb = (mb.match || '').toLowerCase();
+    } else if (sortKey === 'competition') {
+      va = (ma.competition || '').toLowerCase();
+      vb = (mb.competition || '').toLowerCase();
+    }
+    if (va < vb) return -1 * sortDir;
+    if (va > vb) return 1 * sortDir;
+    return 0;
+  });
+
+  if (matches.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" class="no-data">No matches found</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = matches.map(([mid, d]) => rowHTML(mid, d)).join('');
+}
+
+function rowHTML(mid, d) {
+  const meta = d.meta;
+  const odds = d.odds;
+  const mov  = d.movements || {};
+  const score = d.score || {};
+  const isLive = meta.live;
+  const playerKeys = Object.keys(odds);
+
+  const oddA = odds[playerKeys[0]]?.toFixed(2) || '--';
+  const oddB = odds[playerKeys[1]]?.toFixed(2) || '--';
+  const movA = mov[playerKeys[0]] || 'steady';
+  const movB = mov[playerKeys[1]] || 'steady';
+
+  let scoreHTML = '--';
+  if (isLive && score) {
+    const sets = score.sets || [];
+    const setScores = sets.map(s => `<span>${s.a}-${s.b}</span>`).join(' ');
+    scoreHTML = `
+      <div class="score">${score.home ?? '0'} - ${score.away ?? '0'}</div>
+      <div class="score-detail">${setScores || ''}</div>
+      ${score.period ? `<div class="score-detail">${score.period}</div>` : ''}
+    `;
+  }
+
+  const matchDisplay = meta.match || (playerKeys.length >= 2 ?
+    `${playerKeys[0]} vs ${playerKeys[1]}` : mid);
+
+  return `
+    <tr class="${isLive ? 'live' : 'prematch'}" id="row-${mid}">
+      <td>
+        <div class="match-name">
+          ${isLive ? '<span class="live-badge">LIVE</span> ' : ''}
+          ${esc(matchDisplay)}
+        </div>
+        <div class="competition">${esc(meta.competition || '')}</div>
+      </td>
+      <td><span class="competition">${esc(meta.competition || '--')}</span></td>
+      <td>${scoreHTML}</td>
+      <td style="text-align:right">
+        <span class="odd-cell odd-${movA}">${playerKeys[0] || '--'}<br><strong>${oddA}</strong></span>
+      </td>
+      <td style="text-align:left">
+        <span class="odd-cell odd-${movB}"><strong>${oddB}</strong><br>${playerKeys[1] || '--'}</span>
+      </td>
+    </tr>`;
+}
+
+function updateRow(mid) {
+  const d = state[mid];
+  if (!d) return;
+  const row = document.getElementById(`row-${mid}`);
+  if (row) {
+    row.outerHTML = rowHTML(mid, d);
+    // Re-attach animation
+    const newRow = document.getElementById(`row-${mid}`);
+    if (newRow) {
+      newRow.querySelectorAll('.odd-up, .odd-down').forEach(el => {
+        el.style.transition = 'none';
+        el.offsetHeight; // force reflow
+        el.style.transition = 'background 0.3s';
+      });
+    }
+  } else {
+    fullRender();
+  }
+}
+
+function updateStats() {
+  const matches = Object.entries(state);
+  document.getElementById('match-count').textContent = matches.length;
+  document.getElementById('live-count').textContent =
+    matches.filter(([_, d]) => d.meta.live).length;
+}
+
+function esc(s) {
+  const div = document.createElement('div');
+  div.textContent = s || '';
+  return div.innerHTML;
+}
+
+// ── Initial load ────────────────────────────────────────────────────────────
+fetch(`${API}/prices`)
+  .then(r => r.json())
+  .then(data => {
+    const prices = data.prices || {};
+    for (const [mid, markets] of Object.entries(prices)) {
+      const odds1x2 = markets['1X2'] || {};
+      if (Object.keys(odds1x2).length >= 2) {
+        state[mid] = {
+          meta: {},
+          odds: odds1x2,
+          movements: {},
+        };
+      }
+    }
+    fetch(`${API}/markets`)
+      .then(r => r.json())
+      .then(metaData => {
+        for (const [mid, meta] of Object.entries(metaData)) {
+          if (state[mid]) {
+            state[mid].meta = meta;
+            state[mid].score = meta.score_json ? JSON.parse(meta.score_json) : null;
+          }
+        }
+        updateStats();
+        fullRender();
+      })
+      .catch(() => { updateStats(); fullRender(); });
+  })
+  .catch(() => {
+    document.getElementById('table-body').innerHTML =
+      '<tr><td colspan="5" class="no-data">Cannot connect to backend. Is it running on port 5003?</td></tr>';
+  });
+</script>
+</body>
+</html>
