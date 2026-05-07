@@ -2,255 +2,189 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Unibet Tennis — SSE Event Log</title>
 <style>
-  :root {
-    --bg: #0d1117;
-    --surface: #161b22;
-    --border: #30363d;
-    --text: #c9d1d9;
-    --muted: #8b949e;
-    --accent: #58a6ff;
-    --up: #3fb950;
-    --down: #f85149;
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
-    font-size: 12px;
-    line-height: 1.5;
-  }
-  header {
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    padding: 10px 16px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    position: sticky;
-    top: 0;
-    z-index: 10;
-  }
-  header h1 { font-size: 16px; }
-  header a { color: var(--accent); text-decoration: none; font-size: 12px; margin-left: 12px; }
-  .toolbar {
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    padding: 6px 16px;
-    display: flex;
-    gap: 10px;
-    align-items: center;
-    font-size: 11px;
-  }
-  .toolbar button {
-    background: var(--border);
-    color: var(--text);
-    border: none;
-    padding: 4px 10px;
-    border-radius: 3px;
-    cursor: pointer;
-    font-family: inherit;
-    font-size: 11px;
-  }
-  .toolbar button:hover { background: #484f58; }
-  .toolbar button.active { background: var(--accent); color: #000; }
-  .toolbar label { color: var(--muted); }
-  #event-log {
-    height: calc(100vh - 90px);
-    overflow-y: auto;
-    padding: 8px 0;
-  }
-  .event-row {
-    padding: 3px 16px;
-    border-bottom: 1px solid rgba(48, 54, 61, 0.5);
-    display: flex;
-    gap: 10px;
-    align-items: baseline;
-    font-size: 11px;
-  }
-  .event-row:hover { background: rgba(88, 166, 255, 0.05); }
-  .event-row.snapshot { background: rgba(88, 166, 255, 0.08); }
-  .event-ts { color: var(--muted); white-space: nowrap; min-width: 85px; font-size: 10px; }
-  .event-type {
-    font-weight: 600;
-    white-space: nowrap;
-    min-width: 55px;
-  }
-  .event-type.snapshot { color: var(--accent); }
-  .event-type.price { color: var(--up); }
-  .event-type.error { color: var(--down); }
-  .event-match { color: var(--text); min-width: 200px; }
-  .event-odds {
-    color: var(--accent);
-    white-space: nowrap;
-  }
-  .event-odds .up { color: var(--up); }
-  .event-odds .down { color: var(--down); }
-  .event-detail { color: var(--muted); font-size: 10px; }
-  .count {
-    background: var(--border);
-    color: var(--text);
-    padding: 1px 6px;
-    border-radius: 8px;
-    font-size: 10px;
-    margin-left: 4px;
-  }
+* { box-sizing:border-box; margin:0; padding:0; }
+:root {
+  --bg: #060a0f; --bg2: #0c1420; --bg3: #111d2e;
+  --border: #1a2e45; --accent: #58a6ff;
+  --text: #8ab4d4; --text-hi: #cde4f7;
+  --green: #00e676; --red: #ff4f4f;
+}
+body {
+  background:var(--bg); color:var(--text);
+  font-family:'Fira Mono','Cascadia Code','Consolas',monospace;
+  font-size:11px; height:100vh; display:flex; flex-direction:column;
+}
+#topbar {
+  display:flex; align-items:center; gap:10px; padding:8px 16px;
+  background:var(--bg2); border-bottom:1px solid var(--border);
+  flex-shrink:0; flex-wrap:wrap;
+}
+.logo { color:var(--accent); font-weight:700; font-size:14px; }
+.logo span { color:var(--text); font-weight:400; font-size:11px; }
+#dot { width:9px; height:9px; border-radius:50%; background:#2a4060; flex-shrink:0; }
+#dot.live { background:var(--green); box-shadow:0 0 7px var(--green); animation:pulse 2s infinite; }
+#dot.err  { background:var(--red); }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+.ctrl {
+  background:var(--bg3); border:1px solid var(--border); color:var(--text);
+  font-family:inherit; font-size:10px; padding:3px 8px; outline:none; cursor:pointer;
+}
+button.ctrl:hover { color:var(--text-hi); border-color:var(--accent); }
+button.ctrl.active { border-color:var(--accent); color:var(--accent); }
+#counter { color:var(--accent); font-size:12px; margin-left:auto; }
+#log {
+  flex:1; overflow-y:auto; padding:6px 0;
+  font-family:'Fira Mono','Cascadia Code','Consolas',monospace;
+  font-size:11px; line-height:1.5;
+}
+.log-row {
+  padding:2px 16px; border-bottom:1px solid rgba(26,46,69,.2);
+  display:flex; gap:10px; align-items:baseline;
+}
+.log-row:hover { background:rgba(88,166,255,.03); }
+.log-ts    { color:#2a4060; font-size:10px; white-space:nowrap; min-width:70px; }
+.log-badge {
+  font-size:9px; padding:0 4px; white-space:nowrap; min-width:52px; text-align:center;
+}
+.badge-price    { color:var(--accent); border:1px solid rgba(88,166,255,.3); }
+.badge-snapshot { color:var(--green); border:1px solid rgba(0,230,118,.3); }
+.log-mid   { color:#3a6080; font-size:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:280px; }
+.log-odds  { color:var(--text-hi); white-space:nowrap; }
+::-webkit-scrollbar { width:5px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:#2a4060; border-radius:3px; }
 </style>
 </head>
 <body>
 
-<header>
-  <h1>SSE Event Log</h1>
-  <div>
-    <a href="dashboard.html">Dashboard</a>
-    <a href="chart.html">Chart</a>
-  </div>
-</header>
-
-<div class="toolbar">
-  <label>Filters:</label>
-  <button id="btn-all" class="active" onclick="setFilter('all')">All<span id="cnt-all" class="count">0</span></button>
-  <button id="btn-price" onclick="setFilter('price')">Price<span id="cnt-price" class="count">0</span></button>
-  <button id="btn-snapshot" onclick="setFilter('snapshot')">Snapshot<span id="cnt-snapshot" class="count">0</span></button>
-  <button id="btn-clear" onclick="clearLog()">Clear</button>
-  <button id="btn-pause" onclick="togglePause()">Pause</button>
-  <span style="margin-left:auto;color:var(--muted)">
-    Events: <strong id="total-events">0</strong>
-  </span>
-  <span style="color:var(--muted)">
-    Status: <strong id="conn-status" style="color:var(--up)">Connected</strong>
-  </span>
+<div id="topbar">
+  <div class="logo">UNIBET <span>/ SSE Stream Log</span></div>
+  <span id="dot"></span>
+  <input id="api-url" class="ctrl" style="width:190px" value="http://localhost:5333">
+  <button class="ctrl" onclick="connect_()">Connect</button>
+  <button class="ctrl active" id="btn-pause" onclick="togglePause()">Pause</button>
+  <button class="ctrl" onclick="clearLog()">Clear</button>
+  <select id="type-filter" class="ctrl" onchange="applyFilter()">
+    <option value="all">All events</option>
+    <option value="price">Price only</option>
+    <option value="snapshot">Snapshot only</option>
+  </select>
+  <a href="dashboard.html" style="color:var(--accent);font-size:10px;text-decoration:none">Dashboard</a>
+  <a href="chart.html" style="color:var(--accent);font-size:10px;text-decoration:none">Chart</a>
+  <span id="counter">0 events</span>
 </div>
 
-<div id="event-log"></div>
+<div id="log"></div>
 
 <script>
-const API = 'http://localhost:5333';
-let filter = 'all';
+function getBase() { return document.getElementById('api-url').value.replace(/\/$/,'') || 'http://localhost:5333'; }
+
+let _es = null;
 let paused = false;
-let eventCounts = { all: 0, price: 0, snapshot: 0 };
-const MAX_EVENTS = 1000;
+let eventCount = 0;
+let pending = [];
+const MAX_ROWS = 600;
 
-const log = document.getElementById('event-log');
+function connect_() {
+  if (_es) _es.close();
+  _es = new EventSource(getBase() + '/stream');
 
-function addEvent(type, data) {
-  if (paused) return;
-  if (filter !== 'all' && filter !== type) {
-    eventCounts.all++;
-    updateCounts();
-    return;
-  }
+  _es.onopen = () => {
+    document.getElementById('dot').className = 'live';
+  };
 
-  eventCounts.all++;
-  eventCounts[type] = (eventCounts[type] || 0) + 1;
-  updateCounts();
+  _es.onmessage = (e) => {
+    eventCount++;
+    document.getElementById('counter').textContent = eventCount + ' events';
 
-  const ts = new Date(data.ts ? data.ts * 1000 : Date.now()).toLocaleTimeString('fr-FR', { hour12: false });
-  let match = data.match_id || '';
-  let oddsHTML = '';
-  let detailHTML = '';
-
-  if (type === 'price') {
-    const odds = data.odds || {};
-    const mov = data.movements || {};
-    oddsHTML = Object.entries(odds).map(([sel, price]) => {
-      const dir = mov[sel] || '';
-      const cls = dir === 'up' ? 'up' : dir === 'down' ? 'down' : '';
-      return `<span class="${cls}">${sel}: ${price.toFixed(2)}</span>`;
-    }).join(' ');
-    const meta = data.meta || {};
-    match = meta.match || match;
-    if (data.live) {
-      const s = data.score;
-      if (s) {
-        detailHTML = `live | score=${s.home}-${s.away} | sets=${JSON.stringify(s.sets)}`;
-      } else {
-        detailHTML = 'live';
-      }
+    if (paused) {
+      pending.push(e.data);
+      return;
     }
-  }
 
-  if (type === 'snapshot') {
-    const prices = data.prices || {};
-    const count = Object.keys(prices).length;
-    detailHTML = `${count} matches`;
-    match = 'INITIAL SNAPSHOT';
-  }
+    let msg; try { msg = JSON.parse(e.data); } catch { msg = null; }
+    appendRow(msg, e.data);
+  };
 
+  _es.onerror = () => {
+    _es.close();
+    document.getElementById('dot').className = 'err';
+    setTimeout(connect_, 5000);
+  };
+}
+
+function appendRow(msg, raw) {
+  const filter = document.getElementById('type-filter').value;
+  const etype = msg?.type || 'unknown';
+  if (filter !== 'all' && filter !== etype) return;
+
+  const log = document.getElementById('log');
   const row = document.createElement('div');
-  row.className = `event-row ${type}`;
-  row.innerHTML = `
-    <span class="event-ts">${ts}</span>
-    <span class="event-type ${type}">${type.toUpperCase()}</span>
-    <span class="event-match">${esc(match)}</span>
-    <span class="event-odds">${oddsHTML}</span>
-    <span class="event-detail">${detailHTML}</span>
-  `;
-  log.prepend(row);
+  row.className = 'log-row';
+  row.dataset.type = etype;
 
-  // Trim old events
-  while (log.children.length > MAX_EVENTS) {
+  const ts = msg?.ts ? new Date(msg.ts * 1000).toISOString().substr(11, 8) : '--:--:--';
+  const badge = etype === 'snapshot'
+    ? '<span class="log-badge badge-snapshot">SNAP</span>'
+    : '<span class="log-badge badge-price">PRICE</span>';
+
+  let oddsText = '';
+  if (msg?.odds) {
+    oddsText = Object.entries(msg.odds)
+      .map(([k, v]) => k + ': ' + v.toFixed(2))
+      .join('  ');
+  }
+
+  row.innerHTML = `
+    <span class="log-ts">${ts}</span>
+    ${badge}
+    <span class="log-mid" title="${msg?.match_id || ''}">${msg?.match_id || '—'}</span>
+    <span class="log-odds">${oddsText || JSON.stringify(msg).substring(0, 120)}</span>`;
+
+  log.insertBefore(row, log.firstChild);
+
+  while (log.children.length > MAX_ROWS) {
     log.removeChild(log.lastChild);
   }
-
-  document.getElementById('total-events').textContent = eventCounts.all;
-}
-
-function updateCounts() {
-  document.getElementById('cnt-all').textContent = eventCounts.all;
-  document.getElementById('cnt-price').textContent = eventCounts.price || 0;
-  document.getElementById('cnt-snapshot').textContent = eventCounts.snapshot || 0;
-}
-
-function setFilter(f) {
-  filter = f;
-  document.querySelectorAll('.toolbar button').forEach(b => b.classList.remove('active'));
-  document.getElementById(`btn-${f}`).classList.add('active');
-  // Rebuild from stored events? No stored buffer for simplicity — new events follow filter
-}
-
-function clearLog() {
-  log.innerHTML = '';
-  eventCounts = { all: 0, price: 0, snapshot: 0 };
-  updateCounts();
 }
 
 function togglePause() {
   paused = !paused;
-  document.getElementById('btn-pause').textContent = paused ? 'Resume' : 'Pause';
-  document.getElementById('btn-pause').classList.toggle('active', paused);
-}
-
-function esc(s) {
-  const div = document.createElement('div');
-  div.textContent = String(s || '');
-  return div.innerHTML;
-}
-
-// ── SSE ─────────────────────────────────────────────────────────────────────
-const evtSource = new EventSource(`${API}/stream`);
-
-evtSource.addEventListener('open', () => {
-  document.getElementById('conn-status').textContent = 'Connected';
-  document.getElementById('conn-status').style.color = '#3fb950';
-});
-
-evtSource.onerror = () => {
-  document.getElementById('conn-status').textContent = 'Disconnected';
-  document.getElementById('conn-status').style.color = '#f85149';
-};
-
-evtSource.onmessage = (event) => {
-  try {
-    const data = JSON.parse(event.data);
-    addEvent(data.type || 'unknown', data);
-  } catch (e) {
-    addEvent('error', { match_id: 'parse-error', message: e.message });
+  const btn = document.getElementById('btn-pause');
+  if (paused) {
+    btn.classList.remove('active');
+    btn.textContent = 'Resume';
+  } else {
+    btn.classList.add('active');
+    btn.textContent = 'Pause';
+    for (const data of pending) {
+      let msg; try { msg = JSON.parse(data); } catch { msg = null; }
+      appendRow(msg, data);
+    }
+    pending = [];
   }
-};
+}
+
+function clearLog() {
+  document.getElementById('log').innerHTML = '';
+  eventCount = 0;
+  document.getElementById('counter').textContent = '0 events';
+}
+
+function applyFilter() {
+  const filter = document.getElementById('type-filter').value;
+  for (const row of document.querySelectorAll('.log-row')) {
+    if (filter === 'all') {
+      row.style.display = '';
+    } else {
+      row.style.display = row.dataset.type === filter ? '' : 'none';
+    }
+  }
+}
+
+connect_();
 </script>
 </body>
 </html>

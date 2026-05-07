@@ -1,458 +1,502 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Unibet Tennis — Live Odds Dashboard</title>
 <style>
-  :root {
-    --bg: #0d1117;
-    --surface: #161b22;
-    --border: #30363d;
-    --text: #c9d1d9;
-    --muted: #8b949e;
-    --up: #238636;
-    --down: #da3633;
-    --live: #ff4444;
-    --accent: #58a6ff;
-    --row-hover: #1c2129;
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;
-    font-size: 13px;
-    line-height: 1.4;
-  }
-  header {
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    padding: 10px 16px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    position: sticky;
-    top: 0;
-    z-index: 10;
-  }
-  header h1 { font-size: 16px; font-weight: 600; }
-  header .stats {
-    display: flex;
-    gap: 16px;
-    font-size: 11px;
-    color: var(--muted);
-  }
-  header .stats span { white-space: nowrap; }
-  .live-dot {
-    display: inline-block;
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: var(--live);
-    margin-right: 4px;
-    animation: pulse 1.5s ease-in-out infinite;
-  }
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.3; }
-  }
-  .filters {
-    padding: 8px 16px;
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    gap: 10px;
-    align-items: center;
-    flex-wrap: wrap;
-  }
-  .filters input, .filters select {
-    background: var(--bg);
-    color: var(--text);
-    border: 1px solid var(--border);
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 12px;
-    font-family: inherit;
-  }
-  .filters input { width: 180px; }
-  .filters label { font-size: 11px; color: var(--muted); }
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    table-layout: fixed;
-  }
-  thead {
-    position: sticky;
-    top: 74px;
-    z-index: 5;
-  }
-  th {
-    background: var(--surface);
-    color: var(--muted);
-    font-weight: 500;
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    padding: 8px 10px;
-    text-align: left;
-    border-bottom: 2px solid var(--border);
-    cursor: pointer;
-    user-select: none;
-  }
-  th:hover { color: var(--text); }
-  th.sorted { color: var(--accent); }
-  td {
-    padding: 8px 10px;
-    border-bottom: 1px solid var(--border);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  tr:hover { background: var(--row-hover); }
-  tr.live { border-left: 3px solid var(--live); }
-  tr.prematch { border-left: 3px solid transparent; }
-  .odd-cell {
-    text-align: center;
-    font-weight: 600;
-    font-size: 13px;
-    transition: background 0.3s;
-    border-radius: 3px;
-    padding: 4px 8px;
-    min-width: 60px;
-    display: inline-block;
-  }
-  .odd-up { background: rgba(35, 134, 54, 0.25); color: #3fb950; }
-  .odd-down { background: rgba(218, 54, 51, 0.25); color: #f85149; }
-  .odd-steady { color: var(--text); }
-  .odd-new { color: var(--accent); }
-  .score {
-    font-size: 14px;
-    font-weight: 700;
-    font-variant-numeric: tabular-nums;
-  }
-  .score-detail {
-    font-size: 10px;
-    color: var(--muted);
-  }
-  .match-name {
-    font-weight: 500;
-  }
-  .competition {
-    font-size: 11px;
-    color: var(--muted);
-  }
-  .live-badge {
-    background: var(--live);
-    color: #fff;
-    font-size: 9px;
-    padding: 1px 5px;
-    border-radius: 3px;
-    font-weight: 600;
-    text-transform: uppercase;
-  }
-  .loading {
-    padding: 40px;
-    text-align: center;
-    color: var(--muted);
-  }
-  .no-data {
-    padding: 40px;
-    text-align: center;
-    color: var(--muted);
-    font-style: italic;
-  }
+* { box-sizing:border-box; margin:0; padding:0; }
+:root {
+  --bg:       #060a0f;
+  --bg2:      #0c1420;
+  --bg3:      #111d2e;
+  --border:   #1a2e45;
+  --accent:   #58a6ff;
+  --text:     #8ab4d4;
+  --text-hi:  #cde4f7;
+  --green:    #00e676;
+  --red:      #ff4f4f;
+  --live-clr: #00e676;
+}
+body {
+  background:var(--bg); color:var(--text);
+  font-family:'Fira Mono','Cascadia Code','Consolas',monospace;
+  font-size:12px; min-height:100vh; display:flex; flex-direction:column;
+}
+#topbar {
+  display:flex; align-items:center; gap:12px; padding:10px 16px;
+  background:var(--bg2); border-bottom:1px solid var(--border);
+  flex-shrink:0; flex-wrap:wrap; position:sticky; top:0; z-index:100;
+}
+.logo { color:var(--accent); font-weight:700; font-size:14px; letter-spacing:.07em; }
+.logo span { color:var(--text); font-weight:400; font-size:11px; }
+#dot { width:9px; height:9px; border-radius:50%; background:#2a4060; flex-shrink:0; }
+#dot.live { background:var(--green); box-shadow:0 0 7px var(--green); animation:pulse 2s infinite; }
+#dot.err  { background:var(--red); }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+#conn-label { font-size:11px; }
+.ctrl {
+  background:var(--bg3); border:1px solid var(--border); color:var(--text);
+  font-family:inherit; font-size:11px; padding:4px 8px; outline:none; cursor:pointer;
+}
+.ctrl:focus, .ctrl:hover { border-color:var(--accent); }
+button.ctrl { cursor:pointer; }
+button.ctrl:hover { color:var(--text-hi); }
+#stats {
+  margin-left:auto; font-size:10px; color:#3a6080;
+  display:flex; gap:14px; white-space:nowrap;
+}
+#stats b { color:var(--accent); }
+#toolbar {
+  display:flex; gap:8px; align-items:center; padding:8px 16px;
+  background:var(--bg2); border-bottom:1px solid var(--border);
+  flex-wrap:wrap;
+}
+#search {
+  background:var(--bg3); border:1px solid var(--border); color:var(--text-hi);
+  font-family:inherit; font-size:11px; padding:5px 10px; outline:none; width:220px;
+}
+#search:focus { border-color:var(--accent); }
+.pill {
+  background:var(--bg3); border:1px solid var(--border); color:var(--text);
+  font-family:inherit; font-size:10px; padding:3px 9px; cursor:pointer;
+}
+.pill:hover  { border-color:var(--accent); color:var(--text-hi); }
+.pill.active { border-color:var(--accent); color:var(--accent); background:rgba(88,166,255,.06); }
+#count-label { color:#3a6080; font-size:10px; margin-left:auto; }
+#grid {
+  flex:1; padding:10px 16px;
+  display:grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px,1fr));
+  gap:8px;
+  align-content:start;
+}
+.card {
+  background:var(--bg2); border:1px solid var(--border);
+  padding:0; overflow:hidden;
+  transition:border-color .15s;
+}
+.card:hover { border-color:#2a4060; }
+.card-header {
+  display:flex; align-items:center; gap:6px;
+  padding:7px 10px 5px;
+  border-bottom:1px solid var(--border);
+}
+.card-match {
+  color:var(--text-hi); font-size:12px; font-weight:600;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1;
+}
+.card-tournament {
+  color:var(--accent); font-size:9px; white-space:nowrap;
+  overflow:hidden; text-overflow:ellipsis; max-width:140px;
+}
+.live-badge {
+  background:var(--green); color:#000; font-size:8px; font-weight:700;
+  padding:1px 5px; flex-shrink:0;
+}
+.score-bar {
+  display:flex; align-items:center; gap:4px;
+  padding:4px 10px; background:var(--bg3);
+  font-size:11px;
+}
+.score-a, .score-b { font-weight:700; font-size:14px; color:var(--text-hi); }
+.score-sets { color:#3a6080; font-size:9px; margin-left:4px; }
+.score-period { color:var(--accent); font-size:9px; margin-left:auto; }
+.odds-row {
+  display:grid; grid-template-columns:1fr 1fr;
+  gap:1px; padding:6px;
+  background:var(--border);
+}
+.odds-cell {
+  background:var(--bg3); padding:8px 6px; text-align:center;
+  display:flex; flex-direction:column; gap:3px; position:relative;
+  overflow:hidden;
+}
+.sel-label {
+  color:#3a6080; font-size:9px; text-transform:uppercase;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.sel-odd {
+  color:var(--text-hi); font-size:18px; font-weight:600;
+  transition:color .1s;
+}
+.sel-odd.no-data { color:#2a4060; font-size:14px; }
+.sel-pct {
+  color:#3a6080; font-size:10px;
+}
+.flash-up, .flash-down {
+  position:absolute; inset:0; pointer-events:none; opacity:0;
+}
+.flash-up   { background:rgba(0,230,118,.18); }
+.flash-down { background:rgba(255,79,79,.18); }
+@keyframes flash-anim {
+  0%   { opacity:1; }
+  100% { opacity:0; }
+}
+.flashing-up   .flash-up   { animation: flash-anim .6s ease-out forwards; }
+.flashing-down .flash-down { animation: flash-anim .6s ease-out forwards; }
+.trend { font-size:9px; display:inline-block; margin-left:3px; }
+.trend.up   { color:var(--green); }
+.trend.down { color:var(--red); }
+.card-footer {
+  display:flex; justify-content:space-between; align-items:center;
+  padding:4px 10px; border-top:1px solid rgba(26,46,69,.5);
+}
+.card-mid  { color:#2a4060; font-size:9px; }
+.card-age  { color:#2a4060; font-size:9px; }
+#empty {
+  grid-column:1/-1; text-align:center; padding:80px 0;
+  color:#2a4060; font-size:13px; display:none;
+}
+::-webkit-scrollbar { width:5px; height:5px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:#2a4060; border-radius:3px; }
 </style>
 </head>
 <body>
 
-<header>
-  <h1>Unibet Tennis — Live Odds</h1>
-  <div class="stats" id="stats">
-    <span>Matches: <strong id="match-count">0</strong></span>
-    <span>Live: <strong id="live-count">0</strong></span>
-    <span>Updates: <strong id="update-count">0</strong></span>
-    <span>Last: <strong id="last-update">--</strong></span>
+<div id="topbar">
+  <div class="logo">UNIBET <span>/ Tennis Odds</span></div>
+  <span id="dot"></span>
+  <span id="conn-label">—</span>
+  <input id="api-url" class="ctrl" style="width:190px" value="http://localhost:5333">
+  <button class="ctrl" onclick="reconnect()">Connect</button>
+  <div id="stats">
+    <span>Matches: <b id="st-matches">0</b></span>
+    <span>Live: <b id="st-live">0</b></span>
+    <span>Updates: <b id="st-updates">0</b></span>
   </div>
-</header>
-
-<div class="filters">
-  <label>Search:</label>
-  <input type="text" id="search" placeholder="Player or tournament..." oninput="render()">
-  <label>Show:</label>
-  <select id="filter-live" onchange="render()">
-    <option value="all">All Matches</option>
-    <option value="live">Live Only</option>
-    <option value="prematch">Prematch Only</option>
-  </select>
-  <label>Sort:</label>
-  <select id="sort-by" onchange="render()">
-    <option value="start">Start Time</option>
-    <option value="player">Player Name</option>
-    <option value="competition">Tournament</option>
-  </select>
 </div>
 
-<table>
-  <thead>
-    <tr>
-      <th style="width:22%" data-sort="player">Match</th>
-      <th style="width:14%" data-sort="competition">Tournament</th>
-      <th style="width:12%" data-sort="score">Score</th>
-      <th style="width:35%" colspan="2">1X2 Odds (Moneyline)</th>
-    </tr>
-  </thead>
-  <tbody id="table-body">
-    <tr><td colspan="5" class="loading">Connecting to feed...</td></tr>
-  </tbody>
-</table>
+<div id="toolbar">
+  <input id="search" placeholder="Search player or tournament..." oninput="applyFilters()">
+  <button class="pill active" data-filter="all"      onclick="setFilter(this)">All</button>
+  <button class="pill"        data-filter="live"      onclick="setFilter(this)">Live</button>
+  <button class="pill"        data-filter="prematch"  onclick="setFilter(this)">Prematch</button>
+  <span id="count-label">0 matches</span>
+</div>
+
+<div id="grid">
+  <div id="empty">Waiting for data...</div>
+</div>
 
 <script>
-const API = 'http://localhost:5333';
-let state = {};          // match_id → {meta, odds, movements, score}
-let movements = {};      // match_id → {market: {sel: direction}}
-let sortCol = 'start';
-let sortDir = 1;
+const matchState = {};
+let activeFilter = 'all';
+let updateCount = 0;
+let _es = null;
+let _retryDelay = 1000;
+let _statsPollId = null;
 
-// ── SSE Connection ──────────────────────────────────────────────────────────
-const evtSource = new EventSource(`${API}/stream`);
+function getBase() { return document.getElementById('api-url').value.replace(/\/$/,'') || 'http://localhost:5333'; }
 
-evtSource.addEventListener('open', () => {
-  console.log('SSE connected');
-});
+function connectSSE() {
+  _es = new EventSource(getBase() + '/stream');
 
-evtSource.onmessage = (event) => {
-  try {
-    const data = JSON.parse(event.data);
-    if (data.type === 'snapshot') {
-      applySnapshot(data);
-    } else if (data.type === 'price') {
-      applyUpdate(data);
-    }
-  } catch (e) {}
-};
-
-function applySnapshot(data) {
-  const prices = data.prices || {};
-  const meta = data.meta || {};
-  for (const [mid, markets] of Object.entries(prices)) {
-    const odds1x2 = markets['1X2'] || {};
-    if (Object.keys(odds1x2).length >= 2) {
-      state[mid] = {
-        meta: meta[mid] || {},
-        odds: odds1x2,
-        movements: {},
-      };
-    }
-  }
-  render();
-}
-
-function applyUpdate(data) {
-  const mid = data.match_id;
-  const odds = data.odds || {};
-  const mov = data.movements || {};
-  const meta = data.meta || {};
-  const score = data.score;
-
-  if (Object.keys(odds).length < 2) return;
-
-  state[mid] = {
-    meta: { ...(state[mid]?.meta || {}), ...meta, live: data.live },
-    odds: odds,
-    movements: mov,
-    score: score,
+  _es.onopen = () => {
+    _retryDelay = 1000;
+    setStatus('live');
+    startStatsPoll();
   };
 
-  movements[mid] = { ...(movements[mid] || {}), '1X2': mov };
+  _es.onmessage = (e) => {
+    let msg; try { msg = JSON.parse(e.data); } catch { return; }
+    if (msg.type === 'price')    handlePrice(msg);
+    if (msg.type === 'snapshot') handleSnapshot(msg);
+  };
 
-  document.getElementById('update-count').textContent =
-    parseInt(document.getElementById('update-count').textContent) + 1;
-  document.getElementById('last-update').textContent =
-    new Date(data.ts * 1000).toLocaleTimeString();
-
-  updateRow(mid);
-  updateStats();
+  _es.onerror = () => {
+    _es.close();
+    setStatus('err');
+    setTimeout(() => {
+      _retryDelay = Math.min(_retryDelay * 2, 30_000);
+      connectSSE();
+    }, _retryDelay);
+  };
 }
 
-// ── Render ──────────────────────────────────────────────────────────────────
-let renderTimer = null;
-function render() {
-  clearTimeout(renderTimer);
-  renderTimer = setTimeout(() => {
-    updateStats();
-    fullRender();
-  }, 50);
-}
+async function reconnect() {
+  if (_es) { _es.close(); _es = null; }
+  _retryDelay = 1000;
+  setStatus('connecting');
 
-function fullRender() {
-  const tbody = document.getElementById('table-body');
-  const search = document.getElementById('search').value.toLowerCase();
-  const filter = document.getElementById('filter-live').value;
-  const sortKey = document.getElementById('sort-by').value;
-  sortCol = sortKey;
+  try {
+    const [marketsRes, pricesRes] = await Promise.all([
+      fetch(getBase() + '/markets'),
+      fetch(getBase() + '/prices'),
+    ]);
+    const markets = await marketsRes.json();
+    const prices  = await pricesRes.json();
 
-  let matches = Object.entries(state);
-
-  // Filter
-  if (search) {
-    matches = matches.filter(([mid, d]) => {
-      const m = d.meta;
-      return (m.match || '').toLowerCase().includes(search) ||
-             (m.player_a || '').toLowerCase().includes(search) ||
-             (m.player_b || '').toLowerCase().includes(search) ||
-             (m.competition || '').toLowerCase().includes(search);
-    });
-  }
-  if (filter === 'live') {
-    matches = matches.filter(([mid, d]) => d.meta.live);
-  } else if (filter === 'prematch') {
-    matches = matches.filter(([mid, d]) => !d.meta.live);
-  }
-
-  // Sort
-  matches.sort((a, b) => {
-    let va, vb;
-    const ma = a[1].meta, mb = b[1].meta;
-    if (sortKey === 'start') {
-      va = ma.date || '999999';
-      vb = mb.date || '999999';
-      // Live matches first
-      if (ma.live && !mb.live) return -1;
-      if (!ma.live && mb.live) return 1;
-    } else if (sortKey === 'player') {
-      va = (ma.match || '').toLowerCase();
-      vb = (mb.match || '').toLowerCase();
-    } else if (sortKey === 'competition') {
-      va = (ma.competition || '').toLowerCase();
-      vb = (mb.competition || '').toLowerCase();
+    for (const [mid, meta] of Object.entries(markets)) {
+      _ensureState(mid, meta);
     }
-    if (va < vb) return -1 * sortDir;
-    if (va > vb) return 1 * sortDir;
-    return 0;
-  });
-
-  if (matches.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="5" class="no-data">No matches found</td></tr>';
-    return;
-  }
-
-  tbody.innerHTML = matches.map(([mid, d]) => rowHTML(mid, d)).join('');
-}
-
-function rowHTML(mid, d) {
-  const meta = d.meta;
-  const odds = d.odds;
-  const mov  = d.movements || {};
-  const score = d.score || {};
-  const isLive = meta.live;
-  const playerKeys = Object.keys(odds);
-
-  const oddA = odds[playerKeys[0]]?.toFixed(2) || '--';
-  const oddB = odds[playerKeys[1]]?.toFixed(2) || '--';
-  const movA = mov[playerKeys[0]] || 'steady';
-  const movB = mov[playerKeys[1]] || 'steady';
-
-  let scoreHTML = '--';
-  if (isLive && score) {
-    const sets = score.sets || [];
-    const setScores = sets.map(s => `<span>${s.a}-${s.b}</span>`).join(' ');
-    scoreHTML = `
-      <div class="score">${score.home ?? '0'} - ${score.away ?? '0'}</div>
-      <div class="score-detail">${setScores || ''}</div>
-      ${score.period ? `<div class="score-detail">${score.period}</div>` : ''}
-    `;
-  }
-
-  const matchDisplay = meta.match || (playerKeys.length >= 2 ?
-    `${playerKeys[0]} vs ${playerKeys[1]}` : mid);
-
-  return `
-    <tr class="${isLive ? 'live' : 'prematch'}" id="row-${mid}">
-      <td>
-        <div class="match-name">
-          ${isLive ? '<span class="live-badge">LIVE</span> ' : ''}
-          ${esc(matchDisplay)}
-        </div>
-        <div class="competition">${esc(meta.competition || '')}</div>
-      </td>
-      <td><span class="competition">${esc(meta.competition || '--')}</span></td>
-      <td>${scoreHTML}</td>
-      <td style="text-align:right">
-        <span class="odd-cell odd-${movA}">${playerKeys[0] || '--'}<br><strong>${oddA}</strong></span>
-      </td>
-      <td style="text-align:left">
-        <span class="odd-cell odd-${movB}"><strong>${oddB}</strong><br>${playerKeys[1] || '--'}</span>
-      </td>
-    </tr>`;
-}
-
-function updateRow(mid) {
-  const d = state[mid];
-  if (!d) return;
-  const row = document.getElementById(`row-${mid}`);
-  if (row) {
-    row.outerHTML = rowHTML(mid, d);
-    // Re-attach animation
-    const newRow = document.getElementById(`row-${mid}`);
-    if (newRow) {
-      newRow.querySelectorAll('.odd-up, .odd-down').forEach(el => {
-        el.style.transition = 'none';
-        el.offsetHeight; // force reflow
-        el.style.transition = 'background 0.3s';
-      });
+    for (const [mid, mktMap] of Object.entries(prices)) {
+      _ensureState(mid, {});
+      const ms = matchState[mid];
+      const mktKey = Object.keys(mktMap)[0] || '1X2';
+      Object.assign(ms.odds, mktMap[mktKey] || {});
+      ms.market = mktKey;
     }
-  } else {
-    fullRender();
+    for (const mid of Object.keys(matchState)) {
+      _ensureCard(mid);
+      updateCard(mid);
+    }
+    applyFilters();
+  } catch (err) {
+    console.warn('[unibet] bootstrap failed:', err);
+  }
+
+  connectSSE();
+}
+
+function _ensureState(mid, meta) {
+  if (!matchState[mid]) {
+    matchState[mid] = { meta:{}, odds:{}, prevOdds:{}, lastTs:Date.now(), market:'1X2' };
+  }
+  Object.assign(matchState[mid].meta, meta);
+}
+
+function _ensureCard(mid) {
+  if (!matchState[mid].cardEl) {
+    matchState[mid].cardEl = createCard(mid);
+    document.getElementById('grid').appendChild(matchState[mid].cardEl);
+    document.getElementById('empty').style.display = 'none';
   }
 }
 
-function updateStats() {
-  const matches = Object.entries(state);
-  document.getElementById('match-count').textContent = matches.length;
-  document.getElementById('live-count').textContent =
-    matches.filter(([_, d]) => d.meta.live).length;
+function handlePrice(msg) {
+  const mid = String(msg.match_id);
+  updateCount++;
+  document.getElementById('st-updates').textContent = updateCount;
+  document.getElementById('st-live').textContent = msg.live
+    ? Object.values(matchState).filter(m => m.meta.live).length
+    : document.getElementById('st-live').textContent;
+
+  _ensureState(mid, msg.meta || {});
+  const ms = matchState[mid];
+  ms.lastTs = Date.now();
+  ms.market = msg.market || '1X2';
+  Object.assign(ms.prevOdds, ms.odds);
+  Object.assign(ms.odds, msg.odds);
+
+  _ensureCard(mid);
+  updateCard(mid);
+  applyFilters();
 }
 
-function esc(s) {
+function handleSnapshot(msg) {
+  const prices = msg.prices || {};
+  const meta = msg.meta || {};
+  for (const [mid, markets] of Object.entries(prices)) {
+    _ensureState(mid, meta[mid] || {});
+    const ms = matchState[mid];
+    const mktKey = Object.keys(markets)[0] || '1X2';
+    Object.assign(ms.odds, markets[mktKey] || {});
+    ms.market = mktKey;
+    _ensureCard(mid);
+    updateCard(mid);
+  }
+  applyFilters();
+}
+
+function createCard(mid) {
   const div = document.createElement('div');
-  div.textContent = s || '';
-  return div.innerHTML;
+  div.className = 'card';
+  div.dataset.mid = mid;
+  div.innerHTML = `
+    <div class="card-header">
+      <div class="card-match" id="cm-${mid}">—</div>
+      <div class="card-tournament" id="ct-${mid}"></div>
+    </div>
+    <div class="score-bar" id="sb-${mid}" style="display:none">
+      <span class="score-a" id="sa-${mid}">0</span>
+      <span style="color:#3a6080">-</span>
+      <span class="score-b" id="sbv-${mid}">0</span>
+      <span class="score-sets" id="ss-${mid}"></span>
+      <span class="score-period" id="sp-${mid}"></span>
+    </div>
+    <div class="odds-row">
+      ${makeCell(mid, '0')}
+      ${makeCell(mid, '1')}
+    </div>
+    <div class="card-footer">
+      <span class="card-mid" id="cmid-${mid}">${mid}</span>
+      <span class="card-age" id="cage-${mid}">—</span>
+    </div>`;
+  return div;
 }
 
-// ── Initial load ────────────────────────────────────────────────────────────
-fetch(`${API}/prices`)
-  .then(r => r.json())
-  .then(data => {
-    const prices = data.prices || {};
-    for (const [mid, markets] of Object.entries(prices)) {
-      const odds1x2 = markets['1X2'] || {};
-      if (Object.keys(odds1x2).length >= 2) {
-        state[mid] = {
-          meta: {},
-          odds: odds1x2,
-          movements: {},
-        };
-      }
-    }
-    fetch(`${API}/markets`)
-      .then(r => r.json())
-      .then(metaData => {
-        for (const [mid, meta] of Object.entries(metaData)) {
-          if (state[mid]) {
-            state[mid].meta = meta;
-            state[mid].score = meta.score_json ? JSON.parse(meta.score_json) : null;
-          }
+function makeCell(mid, idx) {
+  const id = 'cell_' + mid + '_' + idx;
+  return `
+    <div class="odds-cell" id="${id}">
+      <div class="sel-label" id="lbl-${id}">—</div>
+      <div class="sel-odd no-data" id="odd-${id}">—</div>
+      <div class="sel-pct" id="pct-${id}"></div>
+      <div class="flash-up"></div>
+      <div class="flash-down"></div>
+    </div>`;
+}
+
+function updateCard(mid) {
+  const ms = matchState[mid];
+  const meta = ms.meta;
+
+  const matchEl = document.getElementById('cm-' + mid);
+  const tournEl = document.getElementById('ct-' + mid);
+  const ageEl = document.getElementById('cage-' + mid);
+  const midEl = document.getElementById('cmid-' + mid);
+
+  if (matchEl) matchEl.textContent = meta.match || '';
+  if (tournEl) tournEl.textContent = meta.competition || '';
+  if (ageEl) ageEl.textContent = timeAgo(ms.lastTs);
+  if (midEl) midEl.textContent = mid;
+
+  const header = ms.cardEl.querySelector('.card-header');
+  let liveBadge = ms.cardEl.querySelector('.live-badge');
+  if (meta.live && !liveBadge) {
+    liveBadge = document.createElement('span');
+    liveBadge.className = 'live-badge';
+    liveBadge.textContent = 'LIVE';
+    header.insertBefore(liveBadge, header.firstChild);
+  } else if (!meta.live && liveBadge) {
+    liveBadge.remove();
+  }
+
+  // Score bar
+  const scoreBar = document.getElementById('sb-' + mid);
+  if (meta.live) {
+    scoreBar.style.display = 'flex';
+    document.getElementById('sa-' + mid).textContent = meta.score_a ?? '0';
+    document.getElementById('sbv-' + mid).textContent = meta.score_b ?? '0';
+    const sets = meta.sets || [];
+    document.getElementById('ss-' + mid).textContent = sets.map(s => s.a + '-' + s.b).join(' ');
+    document.getElementById('sp-' + mid).textContent = meta.period_desc || '';
+  } else {
+    scoreBar.style.display = 'none';
+  }
+
+  const players = Object.keys(ms.odds);
+  if (players.length < 2 && meta.player_a && meta.player_b) {
+    players.length = 0;
+    players.push(meta.player_a, meta.player_b);
+  }
+
+  for (let i = 0; i < 2; i++) {
+    const player = players[i];
+    const cid = 'cell_' + mid + '_' + i;
+    const cell = document.getElementById(cid);
+    if (!cell) continue;
+
+    const lblEl = document.getElementById('lbl-' + cid);
+    const oddEl = document.getElementById('odd-' + cid);
+    const pctEl = document.getElementById('pct-' + cid);
+
+    if (player) {
+      const odd = ms.odds[player];
+      const prevOdd = ms.prevOdds[player];
+
+      lblEl.textContent = player;
+
+      if (odd !== undefined && odd !== null) {
+        oddEl.textContent = (odd).toFixed(2);
+        oddEl.classList.remove('no-data');
+        pctEl.textContent = ((1 / odd) * 100).toFixed(1) + '%';
+
+        let trendHtml = '';
+        if (prevOdd !== undefined && Math.abs(prevOdd - odd) > 0.001) {
+          const dir = odd > prevOdd ? 'down' : 'up';
+          trendHtml = '<span class="trend ' + dir + '">' + (dir === 'up' ? '▲' : '▼') + '</span>';
+          flashCell(cell, dir);
         }
-        updateStats();
-        fullRender();
-      })
-      .catch(() => { updateStats(); fullRender(); });
-  })
-  .catch(() => {
-    document.getElementById('table-body').innerHTML =
-      '<tr><td colspan="5" class="no-data">Cannot connect to backend. Is it running on port 5333?</td></tr>';
-  });
+        oddEl.innerHTML = odd.toFixed(2) + trendHtml;
+      }
+    } else {
+      lblEl.textContent = '—';
+      oddEl.textContent = '—';
+      oddEl.classList.add('no-data');
+      pctEl.textContent = '';
+    }
+  }
+
+  ms.cardEl.dataset.live = meta.live ? '1' : '0';
+  ms.cardEl.dataset.matchname = (meta.match || '').toLowerCase();
+  ms.cardEl.dataset.tournament = (meta.competition || '').toLowerCase();
+  ms.cardEl.dataset.players = players.join(' ').toLowerCase();
+}
+
+function flashCell(cell, dir) {
+  cell.classList.remove('flashing-up', 'flashing-down');
+  void cell.offsetWidth;
+  cell.classList.add(dir === 'up' ? 'flashing-up' : 'flashing-down');
+  setTimeout(() => cell.classList.remove('flashing-up','flashing-down'), 700);
+}
+
+function setFilter(el) {
+  document.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  activeFilter = el.dataset.filter;
+  applyFilters();
+}
+
+function applyFilters() {
+  const q = document.getElementById('search').value.toLowerCase().trim();
+  let vis = 0;
+  for (const ms of Object.values(matchState)) {
+    if (!ms.cardEl) continue;
+    const card = ms.cardEl;
+
+    let show = true;
+    if (activeFilter === 'live' && card.dataset.live !== '1') show = false;
+    if (activeFilter === 'prematch' && card.dataset.live !== '0') show = false;
+    if (q) {
+      const nm = card.dataset.matchname || '';
+      const tr = card.dataset.tournament || '';
+      const pl = card.dataset.players || '';
+      if (!nm.includes(q) && !tr.includes(q) && !pl.includes(q)) show = false;
+    }
+    card.style.display = show ? '' : 'none';
+    if (show) vis++;
+  }
+  document.getElementById('count-label').textContent = vis + ' match' + (vis !== 1 ? 'es' : '');
+  document.getElementById('empty').style.display =
+    vis === 0 && Object.keys(matchState).length > 0 ? 'block' : 'none';
+}
+
+function startStatsPoll() {
+  if (_statsPollId) return;
+  _statsPollId = setInterval(async () => {
+    try {
+      const r = await fetch(getBase() + '/status');
+      const d = await r.json();
+      document.getElementById('st-matches').textContent = d.matches || '0';
+    } catch {}
+  }, 5000);
+}
+
+function setStatus(s) {
+  const dot = document.getElementById('dot');
+  const lbl = document.getElementById('conn-label');
+  if (s === 'live')      { dot.className = 'live'; lbl.textContent = 'LIVE'; }
+  else if (s === 'err')  { dot.className = 'err';  lbl.textContent = 'ERR — retrying'; }
+  else                   { dot.className = '';     lbl.textContent = 'connecting...'; }
+}
+
+function timeAgo(ts) {
+  const s = Math.floor((Date.now() - ts) / 1000);
+  if (s < 5)  return 'just now';
+  if (s < 60) return s + 's ago';
+  return Math.floor(s / 60) + 'm ago';
+}
+
+setInterval(() => {
+  for (const [mid, ms] of Object.entries(matchState)) {
+    const el = document.getElementById('cage-' + mid);
+    if (el) el.textContent = timeAgo(ms.lastTs);
+  }
+}, 10000);
+
+reconnect();
 </script>
 </body>
 </html>
