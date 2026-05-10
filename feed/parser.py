@@ -9,9 +9,11 @@ logger = logging.getLogger("unibet_feed")
 MARKET_FACE_A_FACE = 68
 
 
-def parse_float_price(price_str: str) -> float:
+def parse_float_price(price_str: str | None) -> float:
     """Parse Unibet price format: '1,85' → 1.85, '60,00' → 60.0"""
-    return float(price_str.replace(",", "."))
+    if not price_str:
+        return 0.0
+    return float(str(price_str).replace(",", "."))
 
 
 def extract_face_a_face_odds(items: dict) -> dict[str, dict]:
