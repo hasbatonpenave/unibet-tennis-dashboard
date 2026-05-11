@@ -63,8 +63,8 @@ from unibet_api import (
 logger = logging.getLogger("unibet_feed")
 
 # ── CONFIG ──────────────────────────────────────────────────────────────────────
-POLL_INTERVAL    = 0.25     # seconds between live odds polls
-DELTA_POLL_INTERVAL = 0.25   # seconds between delta polls
+POLL_INTERVAL    = 0.5     # seconds between live odds polls
+DELTA_POLL_INTERVAL = 0.5   # seconds between delta polls
 MATCH_REFRESH_MIN = 5.0     # minutes between full match list refresh
 MAX_MATCH_AGE_H   = 48      # stream matches starting within this window
 MAX_SSR_WORKERS   = 5       # concurrent SSR scrapers for prematch odds

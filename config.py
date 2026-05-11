@@ -9,8 +9,8 @@ class Settings(BaseSettings):
     port: int = 5333
     db_path: str = "unibet_sports_prices.db"
 
-    poll_interval: float = 0.25
-    delta_poll_interval: float = 0.25
+    poll_interval: float = 0.5
+    delta_poll_interval: float = 0.5
     match_refresh_min: float = 5.0
     max_match_age_h: float = 48.0
 
