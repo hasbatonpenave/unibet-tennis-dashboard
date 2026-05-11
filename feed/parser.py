@@ -1,11 +1,13 @@
-"""Odds extraction and parsing for Unibet tennis data."""
+"""Odds extraction and parsing for Unibet sports data."""
 
 import logging
 from datetime import datetime, timezone
 
+from api.client import TARGET_MARKETS
+
 logger = logging.getLogger("unibet_feed")
 
-# ── MARKET TYPE CONSTANTS (imported here to avoid circular deps) ──────────────────
+# ── MARKET TYPE CONSTANTS (kept for backward compat) ──────────────────────────────
 MARKET_FACE_A_FACE = 68
 
 
@@ -16,20 +18,24 @@ def parse_float_price(price_str: str | None) -> float:
     return float(str(price_str).replace(",", "."))
 
 
-def extract_face_a_face_odds(items: dict) -> dict[str, dict]:
-    """Extract Face à Face (Moneyline) odds from a flat items dict.
+def _extract_market_odds(
+    items: dict,
+    market_type_id: int,
+    sport_code: str | None = None,
+    market_name: str = "1X2",
+) -> dict[str, dict]:
+    """Extract odds for a specific market type, optionally filtered by sport code.
 
-    Returns {event_id: {match, competition, live, odds: {PlayerA: float, PlayerB: float}, ...}}
+    Returns {event_key: {match_id, event_id, match, player_a, player_b, ...}}
     """
     result: dict[str, dict] = {}
-
     markets_by_event: dict[str, list[dict]] = {}
     outcomes_by_market: dict[str, list[dict]] = {}
 
     for key, val in items.items():
         if not isinstance(val, dict):
             continue
-        if key.startswith("m") and val.get("markettypeId") == MARKET_FACE_A_FACE:
+        if key.startswith("m") and val.get("markettypeId") == market_type_id:
             parent = val.get("parent", "")
             if parent:
                 markets_by_event.setdefault(parent, []).append({"id": key, **val})
@@ -42,6 +48,10 @@ def extract_face_a_face_odds(items: dict) -> dict[str, dict]:
         if not isinstance(event_val, dict):
             continue
         if not (event_key.startswith("l") or event_key.startswith("e")):
+            continue
+
+        code = event_val.get("code", "TENN")
+        if sport_code and code != sport_code:
             continue
 
         mkt_list = markets_by_event.get(event_key, [])
@@ -75,7 +85,10 @@ def extract_face_a_face_odds(items: dict) -> dict[str, dict]:
                 }
 
             evt_id = event_key.lstrip("le")
-            result[event_key] = {
+
+            # Build a compound key: event_key + market_id for multi-market support
+            compound_key = f"{event_key}_{market_type_id}"
+            result[compound_key] = {
                 "match_id":     event_key,
                 "event_id":     int(evt_id) if evt_id.isdigit() else evt_id,
                 "match":        event_val.get("desc", event_val.get("description", "")),
@@ -84,9 +97,11 @@ def extract_face_a_face_odds(items: dict) -> dict[str, dict]:
                 "competition":  event_val.get("pdesc", ""),
                 "start":        event_val.get("start", ""),
                 "live":         is_live,
-                "code":         event_val.get("code", "TENN"),
+                "code":         code,
                 "odds":         odds,
                 "market_id":    mkt["id"],
+                "market_name":  market_name,
+                "market_type":  market_type_id,
                 "score":        score,
                 "parent":       event_val.get("parent", ""),
             }
@@ -94,8 +109,35 @@ def extract_face_a_face_odds(items: dict) -> dict[str, dict]:
     return result
 
 
-def extract_ssr_odds(events_detail: dict) -> dict | None:
-    """Extract Face à Face odds from SSR EventsDetail data."""
+def extract_face_a_face_odds(items: dict) -> dict[str, dict]:
+    """Extract Face a Face (Moneyline) odds from a flat items dict (backward compat).
+
+    Returns {event_key: {match_id, odds: {PlayerA: float, PlayerB: float}, ...}}
+    Note: compound keys are used internally (event_key_marketId), callers should
+    iterate values rather than relying on key format.
+    """
+    return _extract_market_odds(items, 68, sport_code=None, market_name="Face a Face")
+
+
+def extract_odds(items: dict) -> dict[str, dict]:
+    """Extract all configured market odds across all enabled sports.
+
+    Returns {compound_key: {match_id, odds, code, market_name, ...}}
+    Compound key format: {event_key}_{market_type_id}
+    """
+    result: dict[str, dict] = {}
+    for sport_code, markets in TARGET_MARKETS.items():
+        for market_id, market_name in markets.items():
+            extracted = _extract_market_odds(items, market_id, sport_code, market_name)
+            result.update(extracted)
+    return result
+
+
+def extract_ssr_odds(events_detail: dict, target_markets: dict[int, str] | None = None) -> dict | None:
+    """Extract odds from SSR EventsDetail data for configured markets."""
+    if target_markets is None:
+        target_markets = {68: "Face a Face"}
+
     events = events_detail.get("events", [])
     if not events:
         return None
@@ -106,38 +148,43 @@ def extract_ssr_odds(events_detail: dict) -> dict | None:
 
     for group in grouped:
         for mkt in group.get("markets", []):
-            if mkt.get("marketTypeId") == MARKET_FACE_A_FACE:
-                outcomes = mkt.get("outcomes", [])
-                if len(outcomes) < 2:
-                    continue
+            mkt_type = mkt.get("marketTypeId")
+            if mkt_type not in target_markets:
+                continue
 
-                odds = {}
-                for o in sorted(outcomes, key=lambda x: x.get("pos", 0)):
-                    name = o.get("description", f"Player{len(odds)+1}")
-                    price = o.get("price", "0")
-                    odds[name] = parse_float_price(price)
+            outcomes = mkt.get("outcomes", [])
+            if len(outcomes) < 2:
+                continue
 
-                return {
-                    "match_id":     event_id,
-                    "event_id":     ev.get("id"),
-                    "match":        f"{list(odds.keys())[0] if odds else '?'} vs {list(odds.keys())[1] if len(odds) > 1 else '?'}",
-                    "player_a":     list(odds.keys())[0] if odds else "",
-                    "player_b":     list(odds.keys())[1] if len(odds) > 1 else "",
-                    "competition":  "",
-                    "start":        ev.get("start", ""),
-                    "live":         False,
-                    "code":         ev.get("sportCode", "TENN"),
-                    "odds":         odds,
-                    "market_id":    str(mkt.get("id", "")),
-                    "score":        None,
-                    "parent":       ev.get("parent", ""),
-                }
+            odds = {}
+            for o in sorted(outcomes, key=lambda x: x.get("pos", 0)):
+                name = o.get("description", f"Player{len(odds)+1}")
+                price = o.get("price", "0")
+                odds[name] = parse_float_price(price)
+
+            return {
+                "match_id":     event_id,
+                "event_id":     ev.get("id"),
+                "match":        f"{list(odds.keys())[0] if odds else '?'} vs {list(odds.keys())[1] if len(odds) > 1 else '?'}",
+                "player_a":     list(odds.keys())[0] if odds else "",
+                "player_b":     list(odds.keys())[1] if len(odds) > 1 else "",
+                "competition":  "",
+                "start":        ev.get("start", ""),
+                "live":         False,
+                "code":         ev.get("sportCode", "TENN"),
+                "odds":         odds,
+                "market_id":    str(mkt.get("id", "")),
+                "market_name":  target_markets[mkt_type],
+                "market_type":  mkt_type,
+                "score":        None,
+                "parent":       ev.get("parent", ""),
+            }
 
     return None
 
 
 def extract_live_state(event: dict) -> dict:
-    """Extract live match state from a live event dict."""
+    """Extract live match state from a live event dict (tennis)."""
     score = event.get("score", {})
     sets = event.get("set", [])
     period = event.get("period", {})
@@ -154,6 +201,33 @@ def extract_live_state(event: dict) -> dict:
         "time_seconds": (event.get("time") or {}).get("m", 0) * 60 + (event.get("time") or {}).get("s", 0),
         "tiebreak":    event.get("tieBreak", False),
     }
+
+
+def extract_soccer_score(event: dict) -> dict:
+    """Extract live match state from a soccer event dict."""
+    score_obj = event.get("score", {})
+    period = event.get("period", {})
+    time_obj = event.get("time", {})
+
+    return {
+        "is_live":     True,
+        "score_a":     score_obj.get("a"),
+        "score_b":     score_obj.get("b"),
+        "sets":        [],
+        "current_set": None,
+        "max_sets":    None,
+        "period_desc": period.get("desc"),
+        "active":      event.get("active"),
+        "time_seconds": time_obj.get("m", 0) * 60 + time_obj.get("s", 0),
+        "tiebreak":    False,
+    }
+
+
+def extract_score(event: dict, sport_code: str) -> dict:
+    """Extract live score state, dispatching by sport code."""
+    if sport_code == "FOOT":
+        return extract_soccer_score(event)
+    return extract_live_state(event)
 
 
 def build_match_slug(event: dict) -> str:

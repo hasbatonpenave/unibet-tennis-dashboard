@@ -2,14 +2,14 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Unibet Tennis — SSE Event Log</title>
+<title>Unibet Sports — SSE Event Log</title>
 <style>
 * { box-sizing:border-box; margin:0; padding:0; }
 :root {
   --bg: #060a0f; --bg2: #0c1420; --bg3: #111d2e;
   --border: #1a2e45; --accent: #58a6ff;
   --text: #8ab4d4; --text-hi: #cde4f7;
-  --green: #00e676; --red: #ff4f4f;
+  --green: #00e676; --red: #ff4f4f; --orange: #f0a040;
 }
 body {
   background:var(--bg); color:var(--text);
@@ -45,12 +45,18 @@ button.ctrl.active { border-color:var(--accent); color:var(--accent); }
 }
 .log-row:hover { background:rgba(88,166,255,.03); }
 .log-ts    { color:#2a4060; font-size:10px; white-space:nowrap; min-width:70px; }
+.log-sport {
+  font-size:8px; font-weight:700; padding:0 3px; white-space:nowrap; min-width:32px; text-align:center;
+}
+.log-sport.tennis { background:#1a3a5c; color:var(--accent); }
+.log-sport.soccer { background:#3a2a0c; color:var(--orange); }
 .log-badge {
   font-size:9px; padding:0 4px; white-space:nowrap; min-width:52px; text-align:center;
 }
 .badge-price    { color:var(--accent); border:1px solid rgba(88,166,255,.3); }
 .badge-snapshot { color:var(--green); border:1px solid rgba(0,230,118,.3); }
-.log-mid   { color:#3a6080; font-size:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:280px; }
+.log-mid   { color:#3a6080; font-size:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:260px; }
+.log-mkt   { color:var(--accent); font-size:9px; white-space:nowrap; min-width:60px; }
 .log-odds  { color:var(--text-hi); white-space:nowrap; }
 ::-webkit-scrollbar { width:5px; }
 ::-webkit-scrollbar-track { background:transparent; }
@@ -70,6 +76,11 @@ button.ctrl.active { border-color:var(--accent); color:var(--accent); }
     <option value="all">All events</option>
     <option value="price">Price only</option>
     <option value="snapshot">Snapshot only</option>
+  </select>
+  <select id="sport-filter" class="ctrl" onchange="applyFilter()">
+    <option value="all">All sports</option>
+    <option value="tennis">Tennis</option>
+    <option value="soccer">Soccer</option>
   </select>
   <a href="dashboard.html" style="color:var(--accent);font-size:10px;text-decoration:none">Dashboard</a>
   <a href="chart.html" style="color:var(--accent);font-size:10px;text-decoration:none">Chart</a>
@@ -116,19 +127,30 @@ function connect_() {
 }
 
 function appendRow(msg, raw) {
-  const filter = document.getElementById('type-filter').value;
+  const typeFilter = document.getElementById('type-filter').value;
   const etype = msg?.type || 'unknown';
-  if (filter !== 'all' && filter !== etype) return;
+  if (typeFilter !== 'all' && typeFilter !== etype) return;
+
+  const sportFilter = document.getElementById('sport-filter').value;
+  const sport = msg?.meta?.sport || 'tennis';
+  if (sportFilter !== 'all' && sportFilter !== sport) return;
 
   const log = document.getElementById('log');
   const row = document.createElement('div');
   row.className = 'log-row';
   row.dataset.type = etype;
+  row.dataset.sport = sport;
 
   const ts = msg?.ts ? new Date(msg.ts * 1000).toISOString().substr(11, 8) : '--:--:--';
   const badge = etype === 'snapshot'
     ? '<span class="log-badge badge-snapshot">SNAP</span>'
     : '<span class="log-badge badge-price">PRICE</span>';
+
+  const sportTag = sport === 'soccer'
+    ? '<span class="log-sport soccer">FOOT</span>'
+    : '<span class="log-sport tennis">TENN</span>';
+
+  const marketLabel = msg?.market || '';
 
   let oddsText = '';
   if (msg?.odds) {
@@ -139,7 +161,9 @@ function appendRow(msg, raw) {
 
   row.innerHTML = `
     <span class="log-ts">${ts}</span>
+    ${sportTag}
     ${badge}
+    <span class="log-mkt">${marketLabel}</span>
     <span class="log-mid" title="${msg?.match_id || ''}">${msg?.match_id || '—'}</span>
     <span class="log-odds">${oddsText || JSON.stringify(msg).substring(0, 120)}</span>`;
 
@@ -174,13 +198,13 @@ function clearLog() {
 }
 
 function applyFilter() {
-  const filter = document.getElementById('type-filter').value;
+  const typeFilter = document.getElementById('type-filter').value;
+  const sportFilter = document.getElementById('sport-filter').value;
   for (const row of document.querySelectorAll('.log-row')) {
-    if (filter === 'all') {
-      row.style.display = '';
-    } else {
-      row.style.display = row.dataset.type === filter ? '' : 'none';
-    }
+    let show = true;
+    if (typeFilter !== 'all' && row.dataset.type !== typeFilter) show = false;
+    if (sportFilter !== 'all' && row.dataset.sport !== sportFilter) show = false;
+    row.style.display = show ? '' : 'none';
   }
 }
 

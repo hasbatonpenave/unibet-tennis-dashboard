@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Unibet Tennis — Odds History Chart</title>
+<title>Unibet Sports — Odds History Chart</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 <style>
@@ -11,7 +11,7 @@
   --bg:   #060a0f; --bg2: #0c1420; --bg3: #111d2e;
   --border: #1a2e45; --accent: #58a6ff;
   --text: #8ab4d4; --text-hi: #cde4f7;
-  --green: #00e676; --red: #ff4f4f;
+  --green: #00e676; --red: #ff4f4f; --orange: #f0a040;
 }
 body {
   background:var(--bg); color:var(--text);
@@ -33,7 +33,7 @@ button.ctrl:hover { color:var(--text-hi); border-color:var(--accent); }
 select.ctrl { cursor:pointer; }
 #layout { display:flex; flex:1; overflow:hidden; }
 #sidebar {
-  width:280px; background:var(--bg2); border-right:1px solid var(--border);
+  width:300px; background:var(--bg2); border-right:1px solid var(--border);
   overflow-y:auto; flex-shrink:0;
 }
 #sidebar h3 {
@@ -47,7 +47,12 @@ select.ctrl { cursor:pointer; }
 .match-item:hover { background:var(--bg3); }
 .match-item.active { background:rgba(88,166,255,.08); border-left:2px solid var(--accent); }
 .match-item .name { color:var(--text-hi); font-size:11px; margin-bottom:3px; }
-.match-item .info { color:#3a6080; font-size:9px; }
+.match-item .info { color:#3a6080; font-size:9px; display:flex; gap:6px; align-items:center; }
+.sport-tag {
+  font-size:8px; font-weight:700; padding:0 3px;
+}
+.sport-tag.tennis { background:#1a3a5c; color:var(--accent); }
+.sport-tag.soccer { background:#3a2a0c; color:var(--orange); }
 #main { flex:1; display:flex; flex-direction:column; overflow:hidden; }
 #chart-area { flex:1; position:relative; padding:10px; }
 #controls {
@@ -89,7 +94,7 @@ select.ctrl { cursor:pointer; }
 
 <div id="layout">
   <div id="sidebar">
-    <h3>Tennis Matches</h3>
+    <h3>Matches</h3>
     <div id="match-list"><div id="loading">Loading matches...</div></div>
   </div>
   <div id="main">
@@ -119,6 +124,7 @@ function getBase() { return document.getElementById('api-url').value.replace(/\/
 let chart = null;
 let activeMatch = null;
 let activeSelection = null;
+let activeMarket = '1X2';
 let timeWindow = 5;
 let livePoints = [];
 let _es = null;
@@ -146,6 +152,7 @@ async function loadMatches() {
     }
 
     listEl.innerHTML = '';
+    const entries = [];
     for (const mid of matchIds) {
       const meta = markets[mid] || {};
       const odds = prices[mid] || {};
@@ -155,14 +162,28 @@ async function loadMatches() {
         ? Object.keys(mktOdds)
         : [meta.player_a, meta.player_b].filter(Boolean);
       const matchName = meta.match || players.join(' vs ') || mid;
+      const sport = meta.sport || 'tennis';
 
+      entries.push({ mid, meta, players, mktKey, matchName, sport });
+    }
+
+    // Sort: live first, then alphabetical
+    entries.sort((a, b) => {
+      if (a.meta.live !== b.meta.live) return a.meta.live ? -1 : 1;
+      return a.matchName.localeCompare(b.matchName);
+    });
+
+    for (const e of entries) {
       const div = document.createElement('div');
       div.className = 'match-item';
-      div.dataset.mid = mid;
+      div.dataset.mid = e.mid;
+      const sportTag = e.sport === 'soccer'
+        ? '<span class="sport-tag soccer">FOOT</span>'
+        : '<span class="sport-tag tennis">TENN</span>';
       div.innerHTML = `
-        <div class="name">${matchName}</div>
-        <div class="info">${meta.competition || ''} ${meta.live ? '· LIVE' : ''} · ${players.length} players</div>`;
-      div.onclick = () => selectMatch(mid, players, mktKey);
+        <div class="name">${e.matchName}</div>
+        <div class="info">${sportTag} ${e.meta.competition || ''} ${e.meta.live ? '· LIVE' : ''}</div>`;
+      div.onclick = () => selectMatch(e.mid, e.players, e.mktKey);
       listEl.appendChild(div);
     }
 
@@ -177,10 +198,12 @@ async function loadMatches() {
 function selectMatch(mid, players, market) {
   activeMatch = mid;
   activeSelection = players[0] || null;
+  activeMarket = market || '1X2';
   livePoints = [];
 
   document.querySelectorAll('.match-item').forEach(el => el.classList.remove('active'));
-  document.querySelector('.match-item[data-mid="' + mid + '"]')?.classList.add('active');
+  const item = document.querySelector('.match-item[data-mid="' + CSS.escape(mid) + '"]');
+  if (item) item.classList.add('active');
 
   const pillsEl = document.getElementById('sel-pills');
   pillsEl.innerHTML = '';
@@ -203,7 +226,7 @@ async function fetchHistory() {
     const params = new URLSearchParams({
       match_id: activeMatch,
       selection: activeSelection,
-      market: '1X2',
+      market: activeMarket,
       limit: 5000,
     });
     const res = await fetch(getBase() + '/history?' + params);
@@ -214,7 +237,7 @@ async function fetchHistory() {
     try {
       const pricesRes = await fetch(getBase() + '/prices');
       const prices = await pricesRes.json();
-      const mktOdds = (prices[activeMatch] || {})['1X2'] || {};
+      const mktOdds = (prices[activeMatch] || {})[activeMarket] || {};
       const cur = mktOdds[activeSelection];
       if (cur !== undefined) {
         const lastTs = livePoints.length ? livePoints[livePoints.length - 1].x : Date.now();

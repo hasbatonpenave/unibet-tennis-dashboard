@@ -1,4 +1,4 @@
-"""Data models for Unibet Tennis odds feed."""
+"""Data models for Unibet sports odds feed."""
 
 from dataclasses import dataclass, field
 from typing import Optional
@@ -19,7 +19,7 @@ class OddsUpdate:
 
 @dataclass
 class MatchMeta:
-    """Metadata for a tennis match."""
+    """Metadata for a sports match."""
     match: str = ""
     player_a: str = ""
     player_b: str = ""
@@ -27,6 +27,7 @@ class MatchMeta:
     date: str = ""
     live: bool = False
     code: str = "TENN"
+    sport: str = "tennis"
     score_a: Optional[int] = None
     score_b: Optional[int] = None
     sets: list = field(default_factory=list)

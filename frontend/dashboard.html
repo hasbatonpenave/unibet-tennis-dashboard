@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Unibet Tennis — Live Odds Dashboard</title>
+<title>Unibet Sports — Live Odds Dashboard</title>
 <style>
 * { box-sizing:border-box; margin:0; padding:0; }
 :root {
@@ -15,6 +15,7 @@
   --text-hi:  #cde4f7;
   --green:    #00e676;
   --red:      #ff4f4f;
+  --orange:   #f0a040;
   --live-clr: #00e676;
 }
 body {
@@ -93,6 +94,11 @@ button.ctrl:hover { color:var(--text-hi); }
   background:var(--green); color:#000; font-size:8px; font-weight:700;
   padding:1px 5px; flex-shrink:0;
 }
+.sport-badge {
+  font-size:8px; font-weight:700; padding:1px 5px; flex-shrink:0;
+}
+.sport-badge.tennis { background:#1a3a5c; color:var(--accent); }
+.sport-badge.soccer { background:#3a2a0c; color:var(--orange); }
 .score-bar {
   display:flex; align-items:center; gap:4px;
   padding:4px 10px; background:var(--bg3);
@@ -101,15 +107,20 @@ button.ctrl:hover { color:var(--text-hi); }
 .score-a, .score-b { font-weight:700; font-size:14px; color:var(--text-hi); }
 .score-sets { color:#3a6080; font-size:9px; margin-left:4px; }
 .score-period { color:var(--accent); font-size:9px; margin-left:auto; }
+.score-time { color:#3a6080; font-size:9px; margin-left:4px; }
 .odds-row {
-  display:grid; grid-template-columns:1fr 1fr;
-  gap:1px; padding:6px;
+  display:grid; gap:1px; padding:6px;
   background:var(--border);
 }
+.odds-row.cols2 { grid-template-columns:1fr 1fr; }
+.odds-row.cols3 { grid-template-columns:1fr 1fr 1fr; }
 .odds-cell {
   background:var(--bg3); padding:8px 6px; text-align:center;
   display:flex; flex-direction:column; gap:3px; position:relative;
   overflow:hidden;
+}
+.odds-cell.draw-cell {
+  opacity:0.75;
 }
 .sel-label {
   color:#3a6080; font-size:9px; text-transform:uppercase;
@@ -142,6 +153,7 @@ button.ctrl:hover { color:var(--text-hi); }
   padding:4px 10px; border-top:1px solid rgba(26,46,69,.5);
 }
 .card-mid  { color:#2a4060; font-size:9px; }
+.card-mkt  { color:var(--accent); font-size:9px; }
 .card-age  { color:#2a4060; font-size:9px; }
 #empty {
   grid-column:1/-1; text-align:center; padding:80px 0;
@@ -155,7 +167,7 @@ button.ctrl:hover { color:var(--text-hi); }
 <body>
 
 <div id="topbar">
-  <div class="logo">UNIBET <span>/ Tennis Odds</span></div>
+  <div class="logo">UNIBET <span>/ Sports Odds</span></div>
   <span id="dot"></span>
   <span id="conn-label">—</span>
   <input id="api-url" class="ctrl" style="width:190px" value="http://localhost:5333">
@@ -163,15 +175,21 @@ button.ctrl:hover { color:var(--text-hi); }
   <div id="stats">
     <span>Matches: <b id="st-matches">0</b></span>
     <span>Live: <b id="st-live">0</b></span>
+    <span>Tennis: <b id="st-tennis">0</b></span>
+    <span>Soccer: <b id="st-soccer">0</b></span>
     <span>Updates: <b id="st-updates">0</b></span>
   </div>
 </div>
 
 <div id="toolbar">
   <input id="search" placeholder="Search player or tournament..." oninput="applyFilters()">
-  <button class="pill active" data-filter="all"      onclick="setFilter(this)">All</button>
-  <button class="pill"        data-filter="live"      onclick="setFilter(this)">Live</button>
-  <button class="pill"        data-filter="prematch"  onclick="setFilter(this)">Prematch</button>
+  <button class="pill active" data-sport="all" onclick="setSportFilter(this)">All Sports</button>
+  <button class="pill" data-sport="tennis" onclick="setSportFilter(this)">Tennis</button>
+  <button class="pill" data-sport="soccer" onclick="setSportFilter(this)">Football</button>
+  <span style="color:#2a4060;margin:0 2px">|</span>
+  <button class="pill active" data-filter="all"      onclick="setLiveFilter(this)">All</button>
+  <button class="pill"        data-filter="live"      onclick="setLiveFilter(this)">Live</button>
+  <button class="pill"        data-filter="prematch"  onclick="setLiveFilter(this)">Prematch</button>
   <span id="count-label">0 matches</span>
 </div>
 
@@ -181,7 +199,8 @@ button.ctrl:hover { color:var(--text-hi); }
 
 <script>
 const matchState = {};
-let activeFilter = 'all';
+let activeSport = 'all';
+let activeLiveFilter = 'all';
 let updateCount = 0;
 let _es = null;
 let _retryDelay = 1000;
@@ -236,6 +255,9 @@ async function reconnect() {
       const mktKey = Object.keys(mktMap)[0] || '1X2';
       Object.assign(ms.odds, mktMap[mktKey] || {});
       ms.market = mktKey;
+      // Detect cell count from number of selections
+      const selCount = Object.keys(mktMap[mktKey] || {}).length;
+      if (selCount > 0) ms.cellCount = selCount;
     }
     for (const mid of Object.keys(matchState)) {
       _ensureCard(mid);
@@ -251,15 +273,16 @@ async function reconnect() {
 
 function _ensureState(mid, meta) {
   if (!matchState[mid]) {
-    matchState[mid] = { meta:{}, odds:{}, prevOdds:{}, lastTs:Date.now(), market:'1X2' };
+    matchState[mid] = { meta:{}, odds:{}, prevOdds:{}, lastTs:Date.now(), market:'1X2', cellCount:2 };
   }
   Object.assign(matchState[mid].meta, meta);
 }
 
 function _ensureCard(mid) {
-  if (!matchState[mid].cardEl) {
-    matchState[mid].cardEl = createCard(mid);
-    document.getElementById('grid').appendChild(matchState[mid].cardEl);
+  const ms = matchState[mid];
+  if (!ms.cardEl) {
+    ms.cardEl = createCard(mid, ms.cellCount || 2);
+    document.getElementById('grid').appendChild(ms.cardEl);
     document.getElementById('empty').style.display = 'none';
   }
 }
@@ -276,6 +299,8 @@ function handlePrice(msg) {
   const ms = matchState[mid];
   ms.lastTs = Date.now();
   ms.market = msg.market || '1X2';
+  const selCount = Object.keys(msg.odds || {}).length;
+  if (selCount > 0) ms.cellCount = selCount;
   Object.assign(ms.prevOdds, ms.odds);
   Object.assign(ms.odds, msg.odds);
 
@@ -291,6 +316,8 @@ function handleSnapshot(msg) {
     _ensureState(mid, meta[mid] || {});
     const ms = matchState[mid];
     const mktKey = Object.keys(markets)[0] || '1X2';
+    const selCount = Object.keys(markets[mktKey] || {}).length;
+    if (selCount > 0) ms.cellCount = selCount;
     Object.assign(ms.odds, markets[mktKey] || {});
     ms.market = mktKey;
     _ensureCard(mid);
@@ -299,10 +326,19 @@ function handleSnapshot(msg) {
   applyFilters();
 }
 
-function createCard(mid) {
+function createCard(mid, cellCount) {
+  cellCount = cellCount || 2;
   const div = document.createElement('div');
   div.className = 'card';
   div.dataset.mid = mid;
+
+  let cellsHtml = '';
+  for (let i = 0; i < cellCount; i++) {
+    cellsHtml += makeCell(mid, i);
+  }
+  const colsClass = cellCount === 3 ? 'cols3' : 'cols2';
+  const drawClass = (cellCount === 3 && 1 === 1) ? ' draw-cell' : '';
+
   div.innerHTML = `
     <div class="card-header">
       <div class="card-match" id="cm-${mid}">—</div>
@@ -311,16 +347,17 @@ function createCard(mid) {
     <div class="score-bar" id="sb-${mid}" style="display:none">
       <span class="score-a" id="sa-${mid}">0</span>
       <span style="color:#3a6080">-</span>
-      <span class="score-b" id="sbv-${mid}">0</span>
+      <span class="score-b" id="scb-${mid}">0</span>
       <span class="score-sets" id="ss-${mid}"></span>
+      <span class="score-time" id="stm-${mid}"></span>
       <span class="score-period" id="sp-${mid}"></span>
     </div>
-    <div class="odds-row">
-      ${makeCell(mid, '0')}
-      ${makeCell(mid, '1')}
+    <div class="odds-row ${colsClass}">
+      ${cellsHtml}
     </div>
     <div class="card-footer">
       <span class="card-mid" id="cmid-${mid}">${mid}</span>
+      <span class="card-mkt" id="cmkt-${mid}"></span>
       <span class="card-age" id="cage-${mid}">—</span>
     </div>`;
   return div;
@@ -341,18 +378,24 @@ function makeCell(mid, idx) {
 function updateCard(mid) {
   const ms = matchState[mid];
   const meta = ms.meta;
+  const sport = meta.sport || 'tennis';
+  const code = meta.code || 'TENN';
 
   const matchEl = document.getElementById('cm-' + mid);
   const tournEl = document.getElementById('ct-' + mid);
   const ageEl = document.getElementById('cage-' + mid);
   const midEl = document.getElementById('cmid-' + mid);
+  const mktEl = document.getElementById('cmkt-' + mid);
 
   if (matchEl) matchEl.textContent = meta.match || '';
   if (tournEl) tournEl.textContent = meta.competition || '';
   if (ageEl) ageEl.textContent = timeAgo(ms.lastTs);
   if (midEl) midEl.textContent = mid;
+  if (mktEl) mktEl.textContent = ms.market || '';
 
   const header = ms.cardEl.querySelector('.card-header');
+
+  // Live badge
   let liveBadge = ms.cardEl.querySelector('.live-badge');
   if (meta.live && !liveBadge) {
     liveBadge = document.createElement('span');
@@ -363,30 +406,65 @@ function updateCard(mid) {
     liveBadge.remove();
   }
 
+  // Sport badge
+  let sportBadge = ms.cardEl.querySelector('.sport-badge');
+  if (!sportBadge) {
+    sportBadge = document.createElement('span');
+    sportBadge.className = 'sport-badge';
+    header.insertBefore(sportBadge, header.firstChild);
+  }
+  sportBadge.className = 'sport-badge ' + sport;
+  sportBadge.textContent = code === 'FOOT' ? 'FOOT' : 'TENN';
+
   // Score bar
   const scoreBar = document.getElementById('sb-' + mid);
   if (meta.live) {
     scoreBar.style.display = 'flex';
     document.getElementById('sa-' + mid).textContent = meta.score_a ?? '0';
-    document.getElementById('sbv-' + mid).textContent = meta.score_b ?? '0';
-    const sets = meta.sets || [];
-    document.getElementById('ss-' + mid).textContent = sets.map(s => s.a + '-' + s.b).join(' ');
+    document.getElementById('scb-' + mid).textContent = meta.score_b ?? '0';
+
+    // Tennis: show sets
+    if (code === 'TENN') {
+      const sets = meta.sets || [];
+      document.getElementById('ss-' + mid).textContent = sets.map(s => s.a + '-' + s.b).join(' ');
+      document.getElementById('ss-' + mid).style.display = '';
+      document.getElementById('stm-' + mid).textContent = '';
+    } else {
+      // Soccer: show match time
+      document.getElementById('ss-' + mid).textContent = '';
+      const secs = meta.time_seconds || 0;
+      const mins = Math.floor(secs / 60);
+      document.getElementById('stm-' + mid).textContent = mins > 0 ? mins + "'" : '';
+    }
     document.getElementById('sp-' + mid).textContent = meta.period_desc || '';
   } else {
     scoreBar.style.display = 'none';
   }
 
   const players = Object.keys(ms.odds);
-  if (players.length < 2 && meta.player_a && meta.player_b) {
-    players.length = 0;
-    players.push(meta.player_a, meta.player_b);
+  const cellCount = ms.cellCount || players.length || 2;
+
+  // Update odds row column class if needed
+  const oddsRow = ms.cardEl.querySelector('.odds-row');
+  if (oddsRow) {
+    oddsRow.className = 'odds-row ' + (cellCount === 3 ? 'cols3' : 'cols2');
   }
 
-  for (let i = 0; i < 2; i++) {
+  for (let i = 0; i < cellCount; i++) {
     const player = players[i];
     const cid = 'cell_' + mid + '_' + i;
-    const cell = document.getElementById(cid);
-    if (!cell) continue;
+    let cell = document.getElementById(cid);
+    if (!cell) {
+      // Cell count changed — rebuild odds row
+      if (oddsRow) {
+        oddsRow.innerHTML = '';
+        for (let j = 0; j < cellCount; j++) {
+          oddsRow.innerHTML += makeCell(mid, j);
+        }
+      }
+      cell = document.getElementById(cid);
+      if (!cell) continue;
+    }
 
     const lblEl = document.getElementById('lbl-' + cid);
     const oddEl = document.getElementById('odd-' + cid);
@@ -395,7 +473,6 @@ function updateCard(mid) {
     if (player) {
       const odd = ms.odds[player];
       const prevOdd = ms.prevOdds[player];
-
       lblEl.textContent = player;
 
       if (odd !== undefined && odd !== null) {
@@ -420,6 +497,8 @@ function updateCard(mid) {
   }
 
   ms.cardEl.dataset.live = meta.live ? '1' : '0';
+  ms.cardEl.dataset.sport = sport;
+  ms.cardEl.dataset.code = code;
   ms.cardEl.dataset.matchname = (meta.match || '').toLowerCase();
   ms.cardEl.dataset.tournament = (meta.competition || '').toLowerCase();
   ms.cardEl.dataset.players = players.join(' ').toLowerCase();
@@ -432,10 +511,19 @@ function flashCell(cell, dir) {
   setTimeout(() => cell.classList.remove('flashing-up','flashing-down'), 700);
 }
 
-function setFilter(el) {
-  document.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+function setSportFilter(el) {
+  document.querySelectorAll('[data-sport]').forEach(p => {
+    if (p.dataset.sport !== undefined) p.classList.remove('active');
+  });
   el.classList.add('active');
-  activeFilter = el.dataset.filter;
+  activeSport = el.dataset.sport;
+  applyFilters();
+}
+
+function setLiveFilter(el) {
+  document.querySelectorAll('[data-filter]').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  activeLiveFilter = el.dataset.filter;
   applyFilters();
 }
 
@@ -447,8 +535,10 @@ function applyFilters() {
     const card = ms.cardEl;
 
     let show = true;
-    if (activeFilter === 'live' && card.dataset.live !== '1') show = false;
-    if (activeFilter === 'prematch' && card.dataset.live !== '0') show = false;
+    if (activeSport === 'tennis' && card.dataset.sport !== 'tennis') show = false;
+    if (activeSport === 'soccer' && card.dataset.sport !== 'soccer') show = false;
+    if (activeLiveFilter === 'live' && card.dataset.live !== '1') show = false;
+    if (activeLiveFilter === 'prematch' && card.dataset.live !== '0') show = false;
     if (q) {
       const nm = card.dataset.matchname || '';
       const tr = card.dataset.tournament || '';
@@ -470,6 +560,9 @@ function startStatsPoll() {
       const r = await fetch(getBase() + '/status');
       const d = await r.json();
       document.getElementById('st-matches').textContent = d.matches || '0';
+      document.getElementById('st-live').textContent = d.live_matches || '0';
+      document.getElementById('st-tennis').textContent = d.tennis_matches || '0';
+      document.getElementById('st-soccer').textContent = d.soccer_matches || '0';
     } catch {}
   }, 5000);
 }

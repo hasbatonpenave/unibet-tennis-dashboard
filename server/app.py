@@ -82,11 +82,12 @@ async def consume_feed(q: asyncio.Queue):
         competition = meta.get("competition", "")
         match_date  = meta.get("date", "")
         is_live     = int(meta.get("live", False))
+        sport       = meta.get("sport", "tennis")
 
         for selection, odd in odds.items():
             db_queue.put_nowait((
                 ts, match_id, market, selection, odd,
-                match_name, player_a, player_b, competition, match_date, is_live,
+                match_name, player_a, player_b, competition, match_date, is_live, sport,
             ))
 
         event_json = json.dumps({
@@ -140,7 +141,7 @@ async def lifespan(app: FastAPI):
 
 
 # ── APP ───────────────────────────────────────────────────────────────────────────
-app = FastAPI(title="Unibet Tennis Feed", version="1.0", lifespan=lifespan)
+app = FastAPI(title="Unibet Sports Feed", version="2.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -226,7 +227,7 @@ async def get_markets():
 
 @app.get("/status")
 async def get_status():
-    """Feed health: stream count, update count, SSE clients."""
+    """Feed health: stream count, update count, SSE clients, per-sport stats."""
     stats = feed_manager.get_stats()
     stats["sse_clients"]      = broadcaster.client_count
     stats["prices_in_memory"] = len(prices)
@@ -235,17 +236,21 @@ async def get_status():
 
 
 @app.get("/live-scores")
-async def get_live_scores():
-    """Current scores for live tennis matches only."""
+async def get_live_scores(sport: str | None = Query(None, description="Filter by sport: tennis, soccer")):
+    """Current scores for live matches."""
     all_meta = feed_manager.get_all_meta()
     async with prices_lock:
         p = dict(prices)
     live_matches = {}
     for mid, meta in all_meta.items():
         if meta.get("live"):
+            if sport and meta.get("sport") != sport:
+                continue
             live_matches[mid] = {
                 "match":       meta.get("match", ""),
                 "competition": meta.get("competition", ""),
+                "sport":       meta.get("sport", ""),
+                "code":        meta.get("code", ""),
                 "score_a":     meta.get("score_a"),
                 "score_b":     meta.get("score_b"),
                 "sets":        meta.get("sets"),
@@ -261,10 +266,11 @@ async def get_live_scores():
 
 @app.get("/history")
 async def get_history(
-    match_id:  str = Query(...,   description="Match ID (e.g. l3346070 or e3345964)"),
-    selection: str = Query(...,   description="Selection name (player name)"),
+    match_id:  str = Query(...,   description="Match ID (e.g. l3346070_68 or e3345964_1)"),
+    selection: str = Query(...,   description="Selection name (player/team name)"),
     market:    str = Query("1X2", description="Market type"),
     limit:     int = Query(500,   ge=1, le=5000),
+    sport:     str | None = Query(None, description="Filter by sport: tennis, soccer"),
 ):
     """Return recent price history for one selection from SQLite."""
-    return JSONResponse(query_history(match_id, selection, market, limit))
+    return JSONResponse(query_history(match_id, selection, market, limit, sport))

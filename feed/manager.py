@@ -1,4 +1,4 @@
-"""Unibet Tennis Odds Feed — async poll scheduler."""
+"""Unibet Sports Odds Feed — async poll scheduler."""
 
 import asyncio
 import logging
@@ -8,16 +8,16 @@ import aiohttp
 
 from api.client import (
     HEADERS_TEMPLATE,
-    TENNIS_PATH_ID,
     create_connector,
     fetch_live_events,
     fetch_live_delta,
-    fetch_event_listing,
+    fetch_all_sport_pages,
+    refresh_target_markets,
 )
 from api.token import TokenManager
 from config import settings
 from feed.circuit_breaker import CircuitBreaker
-from feed.parser import extract_face_a_face_odds, extract_live_state
+from feed.parser import extract_odds, extract_score
 
 logger = logging.getLogger("unibet_feed")
 
@@ -30,6 +30,8 @@ _stats: dict = {
     "matches":     0,
     "live_matches": 0,
     "prematch_matches": 0,
+    "tennis_matches": 0,
+    "soccer_matches": 0,
     "errors":      0,
 }
 _stop_event: asyncio.Event | None = None
@@ -72,48 +74,38 @@ def _odds_changed(old: dict, new: dict) -> dict | None:
     return changed or None
 
 
+# ── SPORT LABEL ───────────────────────────────────────────────────────────────────
+
+def _sport_label(code: str) -> str:
+    return settings.sport_codes.get(code, "unknown")
+
+
 # ── MATCH LIST REFRESH ────────────────────────────────────────────────────────────
 
 async def _refresh_match_list(
     session: aiohttp.ClientSession,
     token: str,
     queue: asyncio.Queue,
-    prematch_fetched: set[str],
 ) -> None:
-    """Fetch full tennis event listing with odds from lvs-api."""
+    """Fetch full event listing with odds from lvs-api for all enabled sports."""
     try:
-        all_pages_data = []
-        page = 0
-        seen_event_ids: set[str] = set()
-
-        while page < 5:
-            data = await fetch_event_listing(session, token, TENNIS_PATH_ID, page)
-            items = data.get("items", {})
-            if not items:
-                break
-
-            new_events = [k for k in items if k.startswith("e")]
-            new_ids = set(new_events)
-            if not new_ids or new_ids.issubset(seen_event_ids):
-                break
-
-            seen_event_ids.update(new_ids)
-            all_pages_data.append(data)
-
-            if len(new_events) < 20:
-                break
-            page += 1
-
+        refresh_target_markets()
+        pages = await fetch_all_sport_pages(session, token)
         total_odds = 0
-        for data in all_pages_data:
-            items = data.get("items", {})
-            odds = extract_face_a_face_odds(items)
+        tennis_count = 0
+        soccer_count = 0
 
-            for match_id, match_data in odds.items():
+        for data in pages:
+            items = data.get("items", {})
+            odds = extract_odds(items)
+
+            for compound_key, match_data in odds.items():
                 odds_dict = match_data.get("odds", {})
                 if len(odds_dict) < 2:
                     continue
 
+                code = match_data.get("code", "TENN")
+                sport = _sport_label(code)
                 meta = {
                     "match":       match_data.get("match", ""),
                     "player_a":    match_data.get("player_a", ""),
@@ -121,14 +113,15 @@ async def _refresh_match_list(
                     "competition": match_data.get("competition", ""),
                     "date":        match_data.get("start", ""),
                     "live":        match_data.get("live", False),
-                    "code":        match_data.get("code", "TENN"),
+                    "code":        code,
+                    "sport":       sport,
                 }
-                _meta[match_id] = meta
+                _meta[compound_key] = meta
 
                 update = {
                     "source":     "unibet",
-                    "match_id":   match_id,
-                    "market":     "1X2",
+                    "match_id":   compound_key,
+                    "market":     match_data.get("market_name", "1X2"),
                     "odds":       odds_dict,
                     "meta":       meta,
                     "live":       meta["live"],
@@ -138,14 +131,23 @@ async def _refresh_match_list(
                 try:
                     queue.put_nowait(update)
                     total_odds += 1
+                    if code == "FOOT":
+                        soccer_count += 1
+                    else:
+                        tennis_count += 1
                 except asyncio.QueueFull:
                     pass
 
         if total_odds:
             _stats["updates"] += total_odds
-            _stats["prematch_matches"] = total_odds
+            _stats["prematch_matches"] += total_odds
+            _stats["tennis_matches"] += tennis_count
+            _stats["soccer_matches"] += soccer_count
             _stats["last_update"] = time.time()
-            logger.info(f"Match list refresh: {total_odds} tennis matches with odds")
+            logger.info(
+                f"Match list refresh: {total_odds} matches with odds "
+                f"(tennis={tennis_count}, soccer={soccer_count})"
+            )
 
     except Exception as exc:
         logger.error(f"Match list refresh error: {exc}")
@@ -182,7 +184,6 @@ async def run(queue: asyncio.Queue, poll_interval: float | None = None) -> None:
         last_basket: int = 0
         last_odds: dict[str, dict[str, float]] = {}
         last_match_refresh: float = 0
-        prematch_odds_fetched: set[str] = set()
 
         while not _stop_event.is_set():
 
@@ -198,7 +199,7 @@ async def run(queue: asyncio.Queue, poll_interval: float | None = None) -> None:
 
                 now = time.time()
                 if now - last_match_refresh > settings.match_refresh_min * 60:
-                    await _refresh_match_list(session, token, queue, prematch_odds_fetched)
+                    await _refresh_match_list(session, token, queue)
                     last_match_refresh = now
 
                 if last_basket > 0:
@@ -217,13 +218,24 @@ async def run(queue: asyncio.Queue, poll_interval: float | None = None) -> None:
                 if new_basket > last_basket:
                     last_basket = new_basket
 
-                all_odds = extract_face_a_face_odds(items)
+                refresh_target_markets()
+                all_odds = extract_odds(items)
                 updates_pushed = 0
+                tennis_count = 0
+                soccer_count = 0
 
-                for match_id, match_data in all_odds.items():
+                for compound_key, match_data in all_odds.items():
                     odds = match_data.get("odds", {})
+                    code = match_data.get("code", "TENN")
+                    sport = _sport_label(code)
+                    match_id_key = match_data.get("match_id", compound_key)
 
-                    score_data = extract_live_state(match_data) if match_data.get("live") else {}
+                    # Extract score from raw event for live matches
+                    score_data = {}
+                    if match_data.get("live") and match_id_key in items:
+                        raw_event = items[match_id_key]
+                        score_data = extract_score(raw_event, code)
+
                     meta = {
                         "match":       match_data.get("match", ""),
                         "player_a":    match_data.get("player_a", ""),
@@ -231,19 +243,20 @@ async def run(queue: asyncio.Queue, poll_interval: float | None = None) -> None:
                         "competition": match_data.get("competition", ""),
                         "date":        match_data.get("start", ""),
                         "live":        match_data.get("live", False),
-                        "code":        match_data.get("code", "TENN"),
+                        "code":        code,
+                        "sport":       sport,
                         **score_data,
                     }
-                    _meta[match_id] = meta
+                    _meta[compound_key] = meta
 
-                    prev = last_odds.get(match_id, {})
+                    prev = last_odds.get(compound_key, {})
                     changed = _odds_changed(prev, odds)
 
-                    if changed or match_id not in last_odds:
+                    if changed or compound_key not in last_odds:
                         update = {
                             "source":     "unibet",
-                            "match_id":   match_id,
-                            "market":     "1X2",
+                            "match_id":   compound_key,
+                            "market":     match_data.get("market_name", "1X2"),
                             "odds":       odds,
                             "meta":       meta,
                             "live":       meta["live"],
@@ -254,16 +267,22 @@ async def run(queue: asyncio.Queue, poll_interval: float | None = None) -> None:
                         try:
                             queue.put_nowait(update)
                             updates_pushed += 1
+                            if code == "FOOT":
+                                soccer_count += 1
+                            else:
+                                tennis_count += 1
                         except asyncio.QueueFull:
                             pass
 
-                        last_odds[match_id] = dict(odds)
+                        last_odds[compound_key] = dict(odds)
 
                 if updates_pushed:
                     _stats["updates"] += updates_pushed
                     _stats["last_update"] = time.time()
-                    _stats["matches"] = len(all_odds)
-                    _stats["live_matches"] = sum(1 for m in all_odds.values() if m.get("live"))
+                    _stats["matches"] += len(all_odds)
+                    _stats["live_matches"] += sum(1 for m in all_odds.values() if m.get("live"))
+                    _stats["tennis_matches"] += tennis_count
+                    _stats["soccer_matches"] += soccer_count
 
                 breaker.record_success()
 

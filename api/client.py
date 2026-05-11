@@ -1,4 +1,4 @@
-"""Unibet.fr Tennis API HTTP client functions."""
+"""Unibet.fr Sports API HTTP client functions."""
 
 import asyncio
 import json
@@ -10,6 +10,8 @@ from datetime import datetime, timezone
 from typing import Any
 
 import aiohttp
+
+from config import settings
 
 logger = logging.getLogger("unibet_api")
 
@@ -25,6 +27,9 @@ TENNIS_PATH_ID = "p239"
 ATP_PATH_ID    = "p58484924"
 WTA_PATH_ID    = "p58484929"
 
+# ── SOCCER PATH IDs ───────────────────────────────────────────────────────────────
+SOCCER_PATH_IDS = settings.soccer_path_ids
+
 # ── TENNIS MARKET TYPE IDs ────────────────────────────────────────────────────────
 MARKET_FACE_A_FACE     = 68
 MARKET_SET_WINNER      = 69
@@ -34,9 +39,43 @@ MARKET_GAME_HANDICAP   = 130010
 MARKET_SET_BETTING     = 10098
 MARKET_WIN_ONE_SET     = 120997
 
-TARGET_MARKETS = {
-    MARKET_FACE_A_FACE: "Face à Face",
-}
+# ── SOCCER MARKET TYPE IDs ────────────────────────────────────────────────────────
+MARKET_1X2            = 1
+MARKET_OVER_UNDER_25  = 18
+MARKET_BTTS           = 24
+
+# ── TARGET MARKETS BY SPORT ───────────────────────────────────────────────────────
+TARGET_MARKETS: dict[str, dict[int, str]] = {}
+
+def _build_target_markets() -> dict[str, dict[int, str]]:
+    """Build TARGET_MARKETS dict from settings."""
+    result: dict[str, dict[int, str]] = {}
+    if settings.tennis_enabled:
+        result["TENN"] = dict(settings.tennis_market_ids)
+    if settings.soccer_enabled:
+        result["FOOT"] = dict(settings.soccer_market_ids)
+    return result
+
+
+def refresh_target_markets() -> None:
+    """Refresh TARGET_MARKETS from current settings (call after config changes)."""
+    global TARGET_MARKETS
+    TARGET_MARKETS = _build_target_markets()
+
+
+# Initialize at import time
+refresh_target_markets()
+
+# ── SPORT PATH IDs ────────────────────────────────────────────────────────────────
+def get_sport_path_ids() -> dict[str, list[str]]:
+    """Return {sport_code: [path_ids]} for enabled sports."""
+    result: dict[str, list[str]] = {}
+    if settings.tennis_enabled:
+        result["TENN"] = list(settings.tennis_path_ids)
+    if settings.soccer_enabled:
+        result["FOOT"] = list(settings.soccer_path_ids)
+    return result
+
 
 # ── HTTP HEADERS ──────────────────────────────────────────────────────────────────
 HEADERS_TEMPLATE = {
@@ -44,7 +83,7 @@ HEADERS_TEMPLATE = {
     "accept-language":    "fr,en-US;q=0.9,en;q=0.8",
     "dnt":                "1",
     "origin":             BASE_URL,
-    "referer":            f"{BASE_URL}/paris-tennis",
+    "referer":            f"{BASE_URL}/paris-sport",  # neutral — works for all sports
     "sec-fetch-dest":     "empty",
     "sec-fetch-mode":     "cors",
     "sec-fetch-site":     "same-origin",
@@ -123,7 +162,7 @@ async def fetch_event_listing(
     path_id: str = TENNIS_PATH_ID,
     page_index: int = 0,
 ) -> dict:
-    """Fetch tennis events from the lvs-api listing endpoint."""
+    """Fetch events from the lvs-api listing endpoint for a given path."""
     url = f"{EVENT_LISTING_URL}/{path_id}"
     params = {
         "lineId": "1",
@@ -144,31 +183,75 @@ async def fetch_all_tennis_events(
     token: str,
 ) -> list[dict]:
     """Paginate through all tennis events. Returns flat list of event dicts."""
+    pages = await fetch_all_sport_pages(session, token, ["TENN"])
+    all_events = []
+    seen = set()
+    for data in pages:
+        for key, val in data.get("items", {}).items():
+            if key.startswith("e") and key not in seen and val.get("eType") == "G":
+                seen.add(key)
+                all_events.append({"event_id": key, **val})
+    return all_events
+
+
+async def fetch_all_sport_pages(
+    session: aiohttp.ClientSession,
+    token: str,
+    sport_codes: list[str] | None = None,
+) -> list[dict]:
+    """Paginate through event listings. Returns list of raw API page responses."""
+    if sport_codes is None:
+        sport_codes = list(get_sport_path_ids().keys())
+
+    sport_paths = get_sport_path_ids()
+    all_pages: list[dict] = []
+
+    for code in sport_codes:
+        path_ids = sport_paths.get(code, [])
+        for pid in path_ids:
+            page = 0
+            while page < 5:
+                try:
+                    data = await fetch_event_listing(session, token, pid, page)
+                except Exception as exc:
+                    logger.warning(f"Failed to fetch {code} path {pid} page {page}: {exc}")
+                    break
+
+                items = data.get("items", {})
+                if not items:
+                    break
+
+                all_pages.append(data)
+
+                event_count = sum(1 for k in items if k.startswith("e"))
+                if event_count < 20:
+                    break
+                page += 1
+
+    logger.info(f"Discovered {len(all_pages)} pages across sports {sport_codes}")
+    return all_pages
+
+
+async def fetch_all_sport_events(
+    session: aiohttp.ClientSession,
+    token: str,
+    sport_codes: list[str] | None = None,
+) -> list[dict]:
+    """Paginate through events. Returns flat list of event dicts (backward compat)."""
+    if sport_codes is None:
+        sport_codes = list(get_sport_path_ids().keys())
+
+    pages = await fetch_all_sport_pages(session, token, sport_codes)
     all_events: list[dict] = []
-    seen_ids: set[str] = set()
-    page = 0
+    seen: set[str] = set()
 
-    while True:
-        data = await fetch_event_listing(session, token, TENNIS_PATH_ID, page)
-        items = data.get("items", {})
-        if not items:
-            break
+    for data in pages:
+        for key, val in data.get("items", {}).items():
+            if key.startswith("e") and key not in seen and val.get("eType") == "G":
+                seen.add(key)
+                all_events.append({"event_id": key, **val})
 
-        for key, val in items.items():
-            if key.startswith("e") and key not in seen_ids:
-                seen_ids.add(key)
-                if val.get("eType") == "G":
-                    all_events.append({"event_id": key, **val})
-
-        event_count = sum(1 for k in items if k.startswith("e"))
-        if event_count < 20:
-            break
-
-        page += 1
-        if page > 5:
-            break
-
-    logger.info(f"Discovered {len(all_events)} tennis events across {page + 1} pages")
+    logger.info(f"Discovered {len(all_events)} events across sports {sport_codes}")
     return all_events
 
 
@@ -178,13 +261,15 @@ async def fetch_match_detail_ssr(
     session: aiohttp.ClientSession,
     event_id: int | str,
     slug: str | None = None,
+    sport: str = "tennis",
 ) -> dict | None:
     """Scrape a match detail page for SSR state containing odds."""
     eid = str(event_id)
+    sport_path = "paris-football" if sport == "soccer" else "paris-tennis"
     if slug:
-        url = f"{BASE_URL}/paris-tennis/atp/{slug}-m{eid}"
+        url = f"{BASE_URL}/{sport_path}/atp/{slug}-m{eid}"
     else:
-        url = f"{BASE_URL}/paris-tennis/atp/rome-h/{eid}/match"
+        url = f"{BASE_URL}/{sport_path}/atp/rome-h/{eid}/match"
 
     headers = {**HEADERS_TEMPLATE, "x-lvs-hstoken": ""}
     try:
