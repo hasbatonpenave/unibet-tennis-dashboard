@@ -444,27 +444,23 @@ function updateCard(mid) {
   const players = Object.keys(ms.odds);
   const cellCount = ms.cellCount || players.length || 2;
 
-  // Update odds row column class if needed
   const oddsRow = ms.cardEl.querySelector('.odds-row');
   if (oddsRow) {
     oddsRow.className = 'odds-row ' + (cellCount === 3 ? 'cols3' : 'cols2');
+    // Rebuild before the loop so all cells exist when we populate them.
+    // Doing it mid-loop would wipe already-populated cells.
+    const existingCells = oddsRow.querySelectorAll('.odds-cell').length;
+    if (existingCells !== cellCount) {
+      oddsRow.innerHTML = '';
+      for (let j = 0; j < cellCount; j++) oddsRow.innerHTML += makeCell(mid, j);
+    }
   }
 
   for (let i = 0; i < cellCount; i++) {
     const player = players[i];
     const cid = 'cell_' + mid + '_' + i;
-    let cell = document.getElementById(cid);
-    if (!cell) {
-      // Cell count changed — rebuild odds row
-      if (oddsRow) {
-        oddsRow.innerHTML = '';
-        for (let j = 0; j < cellCount; j++) {
-          oddsRow.innerHTML += makeCell(mid, j);
-        }
-      }
-      cell = document.getElementById(cid);
-      if (!cell) continue;
-    }
+    const cell = document.getElementById(cid);
+    if (!cell) continue;
 
     const lblEl = document.getElementById('lbl-' + cid);
     const oddEl = document.getElementById('odd-' + cid);

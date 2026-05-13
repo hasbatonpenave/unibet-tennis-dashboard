@@ -1,14 +1,16 @@
 """
-unibet_api.py — Unibet.fr Tennis API Client
+unibet_api.py — Unibet.fr Sports API Client
 =============================================
 Reverse-engineered API endpoints for the Unibet/Kindred sportsbook platform.
 
 Endpoints discovered:
-  GET /lvs-api/acc/token                                          → Auth token
-  GET /services-api/sportsbookdata/current/events/live/topmarket  → Live events + odds
-  GET /services-api/sportsbookdata/delta/events/live/topmarket/from/{basket}  → Delta updates
-  GET /lvs-api/next/50/p{pathId}?...                              → Event listing (no odds)
-  GET /paris-tennis/{cat}/{league}/{id}/{slug}                    → SSR match detail w/ odds
+  GET  /lvs-api/acc/token                                          → Auth token
+  GET  /services-api/sportsbookdata/current/events/live/topmarket  → Live events + odds (all sports)
+  GET  /services-api/sportsbookdata/delta/events/live/topmarket/from/{basket}  → Delta updates
+  GET  /lvs-api/next/50/p{pathId}?...                              → Event listing (no odds)
+  GET  /paris-tennis/{cat}/{league}/{id}/{slug}                    → SSR match detail w/ odds
+  POST /service-sport-enligne-bff/v1/outcomes-percents             → Betting probability % by outcome
+  GET  /service-sport-enligne-bff/v1/quick-access                  → Popular competition IDs
 
 Data model (flat items dict, keyed by prefix):
   l<N>  — live event     {desc, a, b, code, score, set[], match[], period, parent=p<id>}
@@ -17,11 +19,17 @@ Data model (flat items dict, keyed by prefix):
   o<N>  — outcome         {parent=m<id>, price, desc, pos, spread, suspended}
   p<N>  — competition     {desc, eType, items: {e<>...}}
 
-Tennis-specific:
+Tennis (code=TENN):
   markettypeId 68  = "Face à Face" (Moneyline — 2-way)
   markettypeId 69  = "Vainqueur du set X" (Set winner)
   markettypeId 361 = "Total des jeux" (Total games O/U)
   markettypeId 840 = "Score Exact" (Exact score)
+
+Football (code=FOOT):
+  markettypeId 1   = "1 N 2" (Match result — 3-way home/draw/away)
+  score            = {a: int, b: int}  (home/away goals)
+  period           = {type, duration, instance, desc}  (e.g. "1ère Période")
+  time             = {m: int, s: int}  (elapsed minutes/seconds)
 
 Auth:
   X-LVS-HSToken header required for all /services-api/ and /lvs-api/ endpoints.
@@ -49,14 +57,17 @@ LVS_TOKEN_URL = f"{BASE_URL}/lvs-api/acc/token"
 LIVE_EVENTS_URL = f"{BASE_URL}/services-api/sportsbookdata/current/events/live/topmarket"
 LIVE_DELTA_URL = f"{BASE_URL}/services-api/sportsbookdata/delta/events/live/topmarket/from"
 EVENT_LISTING_URL = f"{BASE_URL}/lvs-api/next/50"
+OUTCOMES_PERCENTS_URL = f"{BASE_URL}/service-sport-enligne-bff/v1/outcomes-percents"
+QUICK_ACCESS_URL = f"{BASE_URL}/service-sport-enligne-bff/v1/quick-access"
 
-# Tennis path IDs (from SSR Ept tree)
-TENNIS_PATH_ID = "p239"       # All Tennis
-ATP_PATH_ID    = "p58484924"  # ATP category
-WTA_PATH_ID    = "p58484929"  # WTA category
+# Sport path IDs (from SSR Ept tree)
+TENNIS_PATH_ID   = "p239"       # All Tennis
+ATP_PATH_ID      = "p58484924"  # ATP category
+WTA_PATH_ID      = "p58484929"  # WTA category
+FOOTBALL_PATH_ID = "p240"       # All Football
 
-# Tennis-specific market type IDs
-MARKET_FACE_A_FACE     = 68    # Moneyline / Match Winner
+# Tennis market type IDs
+MARKET_FACE_A_FACE     = 68    # Moneyline / Match Winner (2-way)
 MARKET_SET_WINNER      = 69    # Set X winner
 MARKET_TOTAL_GAMES     = 361   # Total games O/U
 MARKET_EXACT_SCORE     = 840   # Exact score
@@ -64,9 +75,16 @@ MARKET_GAME_HANDICAP   = 130010
 MARKET_SET_BETTING     = 10098 # Number of sets
 MARKET_WIN_ONE_SET     = 120997  # Player to win at least 1 set
 
+# Football market type IDs
+MARKET_1X2 = 1   # Match result: home / draw / away (3-way)
+
+# Set of moneyline market IDs across all tracked sports
+MONEYLINE_MARKET_TYPES = {MARKET_FACE_A_FACE, MARKET_1X2}
+
 # Market names to extract
 TARGET_MARKETS = {
     MARKET_FACE_A_FACE: "Face à Face",
+    MARKET_1X2:         "1 N 2",
 }
 
 HEADERS_TEMPLATE = {
@@ -183,6 +201,53 @@ async def fetch_all_tennis_events(
     return all_events
 
 
+# ── FOOTBALL-SPECIFIC ENDPOINTS ─────────────────────────────────────────────────
+
+async def fetch_outcomes_percents(
+    session: aiohttp.ClientSession,
+    outcome_ids: list[int],
+) -> dict[str, dict[str, int]]:
+    """
+    POST /service-sport-enligne-bff/v1/outcomes-percents
+
+    Returns betting probability percentages per outcome, keyed by event_id → {outcome_id: pct}.
+    Useful for showing implied probability alongside decimal odds.
+
+    Example response: {"181236548": {"665236491": 95, "665236492": 3, "665236493": 2}}
+    """
+    headers = {
+        **HEADERS_TEMPLATE,
+        "content-type": "application/json",
+        "referer": f"{BASE_URL}/paris-football",
+    }
+    async with session.post(
+        OUTCOMES_PERCENTS_URL,
+        headers=headers,
+        json=outcome_ids,
+        timeout=aiohttp.ClientTimeout(total=10),
+    ) as resp:
+        return await resp.json()
+
+
+async def fetch_quick_access(session: aiohttp.ClientSession) -> list[dict]:
+    """
+    GET /service-sport-enligne-bff/v1/quick-access
+
+    Returns popular competition groups with event IDs for each sport.
+    Useful for discovering top football competitions without a token.
+    """
+    headers = {
+        **HEADERS_TEMPLATE,
+        "referer": f"{BASE_URL}/cotes-boostees",
+    }
+    async with session.get(
+        QUICK_ACCESS_URL,
+        headers=headers,
+        timeout=aiohttp.ClientTimeout(total=10),
+    ) as resp:
+        return await resp.json()
+
+
 # ── LIVE EVENTS + ODDS ──────────────────────────────────────────────────────────
 
 async def fetch_live_events(
@@ -287,13 +352,16 @@ def parse_float_price(price_str: str | None) -> float:
 
 def extract_face_a_face_odds(items: dict) -> dict[str, dict]:
     """
-    Extract Face à Face (Moneyline) odds from a flat items dict.
+    Extract moneyline odds from a flat items dict for all tracked sports.
+
+    Handles:
+      - Tennis: markettypeId 68 "Face à Face" (2-way)
+      - Football: markettypeId 1 "1 N 2" (3-way: home/draw/away)
 
     Returns {event_id: {
         "match": str, "competition": str, "live": bool,
-        "odds": {"PlayerA": float, "PlayerB": float},
-        "market_id": str, "outcome_ids": [str, str],
-        "score": {...}, "period": {...},
+        "odds": {"PlayerA": float, ...},
+        "market_id": str, "score": {...},
     }}
     """
     result: dict[str, dict] = {}
@@ -305,7 +373,7 @@ def extract_face_a_face_odds(items: dict) -> dict[str, dict]:
     for key, val in items.items():
         if not isinstance(val, dict):
             continue
-        if key.startswith("m") and val.get("markettypeId") == MARKET_FACE_A_FACE:
+        if key.startswith("m") and val.get("markettypeId") in MONEYLINE_MARKET_TYPES:
             parent = val.get("parent", "")
             if parent:
                 markets_by_event.setdefault(parent, []).append({"id": key, **val})
@@ -338,19 +406,32 @@ def extract_face_a_face_odds(items: dict) -> dict[str, dict]:
 
             # Build match info
             is_live = event_key.startswith("l")
+            sport_code = event_val.get("code", "TENN")
             score = None
             if is_live:
-                score = {
-                    "home": event_val.get("score", {}).get("a"),
-                    "away": event_val.get("score", {}).get("b"),
-                    "sets": event_val.get("set", []),
-                    "match_score": event_val.get("match", []),
-                    "current_set": event_val.get("currSet"),
-                    "max_sets": event_val.get("max"),
-                    "period": event_val.get("period", {}).get("desc"),
-                    "active": event_val.get("active"),
-                    "time": event_val.get("time"),
-                }
+                raw_score = event_val.get("score") or {}
+                period = event_val.get("period") or {}
+                time_val = event_val.get("time") or {}
+                if sport_code == "FOOT":
+                    score = {
+                        "home":   raw_score.get("a"),
+                        "away":   raw_score.get("b"),
+                        "period": period.get("desc"),
+                        "time_m": time_val.get("m"),
+                        "time_s": time_val.get("s"),
+                    }
+                else:
+                    score = {
+                        "home": raw_score.get("a"),
+                        "away": raw_score.get("b"),
+                        "sets": event_val.get("set", []),
+                        "match_score": event_val.get("match", []),
+                        "current_set": event_val.get("currSet"),
+                        "max_sets": event_val.get("max"),
+                        "period": period.get("desc"),
+                        "active": event_val.get("active"),
+                        "time": time_val,
+                    }
 
             evt_id = event_key.lstrip("le")
             result[event_key] = {

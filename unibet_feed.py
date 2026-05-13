@@ -45,6 +45,7 @@ from unibet_api import (
     TokenManager,
     HEADERS_TEMPLATE,
     TENNIS_PATH_ID,
+    FOOTBALL_PATH_ID,
     TARGET_MARKETS,
     MARKET_FACE_A_FACE,
     create_connector,
@@ -278,6 +279,37 @@ async def run(queue: asyncio.Queue, poll_interval: float | None = None) -> None:
 
 # ── MATCH LIST REFRESH ──────────────────────────────────────────────────────────
 
+async def _fetch_sport_pages(
+    session: aiohttp.ClientSession,
+    token: str,
+    path_id: str,
+) -> list[dict]:
+    """Paginate through all prematch pages for a sport path, return list of raw page dicts."""
+    all_pages = []
+    page = 0
+    seen_event_ids: set[str] = set()
+
+    while page < 5:
+        data = await fetch_event_listing(session, token, path_id, page)
+        items = data.get("items", {})
+        if not items:
+            break
+
+        new_events = [k for k in items if k.startswith("e")]
+        new_ids = set(new_events)
+        if not new_ids or new_ids.issubset(seen_event_ids):
+            break
+
+        seen_event_ids.update(new_ids)
+        all_pages.append(data)
+
+        if len(new_events) < 20:
+            break
+        page += 1
+
+    return all_pages
+
+
 async def _refresh_match_list(
     session: aiohttp.ClientSession,
     token: str,
@@ -285,36 +317,22 @@ async def _refresh_match_list(
     prematch_fetched: set[str],
 ) -> None:
     """
-    Fetch full tennis event listing with odds from lvs-api.
-    The lvs-api returns events (e), markets (m), and outcomes (o) together.
+    Fetch prematch event listings for tennis and football from lvs-api.
+    Both return the same flat items structure (e/m/o keys); market type differs:
+      Tennis: markettypeId 68 (Face à Face, 2-way)
+      Football: markettypeId 1 (1 N 2, 3-way)
     """
     try:
-        all_pages_data = []
-        page = 0
-        seen_event_ids: set[str] = set()
+        # Fetch both sports concurrently
+        tennis_pages, football_pages = await asyncio.gather(
+            _fetch_sport_pages(session, token, TENNIS_PATH_ID),
+            _fetch_sport_pages(session, token, FOOTBALL_PATH_ID),
+        )
 
-        while page < 5:  # safety limit
-            data = await fetch_event_listing(session, token, TENNIS_PATH_ID, page)
-            items = data.get("items", {})
-            if not items:
-                break
-
-            # Count new events
-            new_events = [k for k in items if k.startswith("e")]
-            new_ids = set(new_events)
-            if not new_ids or new_ids.issubset(seen_event_ids):
-                break
-
-            seen_event_ids.update(new_ids)
-            all_pages_data.append(data)
-
-            if len(new_events) < 20:
-                break
-            page += 1
-
-        # Extract Face à Face odds from all pages
+        all_pages = tennis_pages + football_pages
         total_odds = 0
-        for data in all_pages_data:
+
+        for data in all_pages:
             items = data.get("items", {})
             odds = extract_face_a_face_odds(items)
 
@@ -354,7 +372,7 @@ async def _refresh_match_list(
             _stats["updates"] += total_odds
             _stats["prematch_matches"] = total_odds
             _stats["last_update"] = time.time()
-            logger.info(f"Match list refresh: {total_odds} tennis matches with odds")
+            logger.info(f"Match list refresh: {total_odds} matches with odds (tennis + football)")
 
     except Exception as exc:
         logger.error(f"Match list refresh error: {exc}")
